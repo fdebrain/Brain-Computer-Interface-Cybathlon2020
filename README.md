@@ -92,6 +92,8 @@ You need to have the `./Datasets/` folder on your Google Drive before running th
 
 The `data_path` parameter should be adapted to your path once your Drive has been mounted.
 
+Create a local copy of the notebooks before running them and change runtime type to GPU (runtime -> change runtime type).
+
 [Benchmarking - Competition dataset](https://colab.research.google.com/drive/1QLnWBQ0ZXnaVCvoCr--Ro8In2sOHnuE9)
 
 [Benchmarking - BCIC dataset](https://colab.research.google.com/drive/1cRHG0g0a_X-yfjg7U_QXlCQ4idBmjHNm)
