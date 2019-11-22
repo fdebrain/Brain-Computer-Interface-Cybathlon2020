@@ -1,7 +1,6 @@
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 import scipy
-from tqdm import tqdm_notebook
 
 class Morlet(object):
     def __init__(self, w0=6):
