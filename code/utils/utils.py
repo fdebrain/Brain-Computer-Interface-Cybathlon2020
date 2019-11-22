@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from ipywidgets import interact
 import mne
 
 import sys
@@ -32,9 +31,6 @@ def inspect_mne(path, plot_mne=False, load=False, verbose=0, filetype='gdf'):
     print('Inspecting ', path)
     raw = mne.io.read_raw_gdf(path, preload=True) if filetype=='gdf' else mne.io.read_raw_brainvision(path, preload=True) 
     
-    # Remove EOG channels
-    raw.drop_channels(['Fp1', 'Fp2'])
-
     # Getting
     print('Sampling frequency: ', raw.info['sfreq'])
     
