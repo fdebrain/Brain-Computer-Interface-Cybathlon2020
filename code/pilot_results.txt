@@ -1,0 +1,193 @@
+RUNNING EXP ON session 3
+Loading  ../Datasets/Pilots/Pilot_2/Session_3/formatted_filt_250Hz/
+Properties: 240 train trials - 61 channels - 6.004s trial length
+Selecting classes [0, 1, 2, 3] & balancing...
+Selecting 61 channels
+Selecting time-window [0.0 - 6.004]s - (6.004s)...
+Output shapes:  (160, 61, 1501) (160, 61, 1501) (160, 61, 1501)
+Output classes:  [0 1 2 3]
+Fold  1
+Took 3583.8ms to fit the model (about 28.0ms per trial).
+Took 387.6ms to perform inference (about 12.1ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.375/0.167. 
+
+Fold  2
+Took 3457.3ms to fit the model (about 27.0ms per trial).
+Took 584.1ms to perform inference (about 18.3ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.406/0.208. 
+
+Fold  3
+Took 4378.4ms to fit the model (about 34.2ms per trial).
+Took 592.3ms to perform inference (about 18.5ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.625/0.500. 
+
+Fold  4
+Took 4560.1ms to fit the model (about 35.6ms per trial).
+Took 652.7ms to perform inference (about 20.4ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.562/0.417. 
+
+Fold  5
+Took 4697.3ms to fit the model (about 36.7ms per trial).
+Took 583.2ms to perform inference (about 18.2ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.562/0.417. 
+
+Mean training score: 1.000 (accuracy) - 1.000 (kappa)
+Mean test score: 0.506+-0.098 (accuracy) - 0.342+-0.130 (kappa)
+Mean training time per trial: 32.3ms
+Mean testing time per trial: 17.5ms
+
+
+RUNNING EXP ON session 4
+Loading  ../Datasets/Pilots/Pilot_2/Session_4/formatted_filt_250Hz/
+Properties: 120 train trials - 61 channels - 6.004s trial length
+Selecting classes [0, 1, 2, 3] & balancing...
+Selecting 61 channels
+Selecting time-window [0.0 - 6.004]s - (6.004s)...
+Output shapes:  (80, 61, 1501) (80, 61, 1501) (80, 61, 1501)
+Output classes:  [0 1 2 3]
+Fold  1
+Took 2936.1ms to fit the model (about 45.9ms per trial).
+Took 389.0ms to perform inference (about 24.3ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.438/0.250. 
+
+Fold  2
+Took 2899.6ms to fit the model (about 45.3ms per trial).
+Took 296.6ms to perform inference (about 18.5ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.375/0.167. 
+
+Fold  3
+Took 2769.9ms to fit the model (about 43.3ms per trial).
+Took 305.0ms to perform inference (about 19.1ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.250/0.000. 
+
+Fold  4
+Took 2859.9ms to fit the model (about 44.7ms per trial).
+Took 313.7ms to perform inference (about 19.6ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.438/0.250. 
+
+Fold  5
+Took 2821.8ms to fit the model (about 44.1ms per trial).
+Took 300.3ms to perform inference (about 18.8ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.250/0.000. 
+
+Mean training score: 1.000 (accuracy) - 1.000 (kappa)
+Mean test score: 0.350+-0.085 (accuracy) - 0.133+-0.113 (kappa)
+Mean training time per trial: 44.6ms
+Mean testing time per trial: 20.1ms
+
+
+RUNNING EXP ON session 5
+Loading  ../Datasets/Pilots/Pilot_2/Session_5/formatted_filt_250Hz/
+Properties: 120 train trials - 61 channels - 6.004s trial length
+Selecting classes [0, 1, 2, 3] & balancing...
+Selecting 61 channels
+Selecting time-window [0.0 - 6.004]s - (6.004s)...
+Output shapes:  (80, 61, 1501) (80, 61, 1501) (80, 61, 1501)
+Output classes:  [0 1 2 3]
+Fold  1
+Took 2707.7ms to fit the model (about 42.3ms per trial).
+Took 298.1ms to perform inference (about 18.6ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.562/0.417. 
+
+Fold  2
+Took 2878.9ms to fit the model (about 45.0ms per trial).
+Took 326.3ms to perform inference (about 20.4ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.375/0.167. 
+
+Fold  3
+Took 2789.0ms to fit the model (about 43.6ms per trial).
+Took 297.8ms to perform inference (about 18.6ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.438/0.250. 
+
+Fold  4
+Took 2763.2ms to fit the model (about 43.2ms per trial).
+Took 313.2ms to perform inference (about 19.6ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.250/0.000. 
+
+Fold  5
+Took 3268.5ms to fit the model (about 51.1ms per trial).
+Took 372.2ms to perform inference (about 23.3ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.438/0.250. 
+
+Mean training score: 1.000 (accuracy) - 1.000 (kappa)
+Mean test score: 0.412+-0.102 (accuracy) - 0.217+-0.135 (kappa)
+Mean training time per trial: 45.0ms
+Mean testing time per trial: 20.1ms
+
+
+RUNNING EXP ON session 6
+Loading  ../Datasets/Pilots/Pilot_2/Session_6/formatted_filt_250Hz/
+Properties: 120 train trials - 61 channels - 6.004s trial length
+Selecting classes [0, 1, 2, 3] & balancing...
+Selecting 61 channels
+Selecting time-window [0.0 - 6.004]s - (6.004s)...
+Output shapes:  (80, 61, 1501) (80, 61, 1501) (80, 61, 1501)
+Output classes:  [0 1 2 3]
+Fold  1
+Took 3024.9ms to fit the model (about 47.3ms per trial).
+Took 310.9ms to perform inference (about 19.4ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.375/0.167. 
+
+Fold  2
+Took 2831.3ms to fit the model (about 44.2ms per trial).
+Took 388.2ms to perform inference (about 24.3ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.500/0.333. 
+
+Fold  3
+Took 2826.4ms to fit the model (about 44.2ms per trial).
+Took 305.7ms to perform inference (about 19.1ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.312/0.083. 
+
+Fold  4
+Took 2940.3ms to fit the model (about 45.9ms per trial).
+Took 340.4ms to perform inference (about 21.3ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.125/-0.167. 
+
+Fold  5
+Took 2886.6ms to fit the model (about 45.1ms per trial).
+Took 316.5ms to perform inference (about 19.8ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.375/0.167. 
+
+Mean training score: 1.000 (accuracy) - 1.000 (kappa)
+Mean test score: 0.338+-0.122 (accuracy) - 0.117+-0.163 (kappa)
+Mean training time per trial: 45.3ms
+Mean testing time per trial: 20.8ms
+
+
+RUNNING EXP ON session 8
+Loading  ../Datasets/Pilots/Pilot_2/Session_8/formatted_filt_250Hz/
+Properties: 240 train trials - 61 channels - 6.004s trial length
+Selecting classes [0, 1, 2, 3] & balancing...
+Selecting 61 channels
+Selecting time-window [0.0 - 6.004]s - (6.004s)...
+Output shapes:  (160, 61, 1501) (160, 61, 1501) (160, 61, 1501)
+Output classes:  [0 1 2 3]
+Fold  1
+Took 4136.5ms to fit the model (about 32.3ms per trial).
+Took 536.0ms to perform inference (about 16.7ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.406/0.208. 
+
+Fold  2
+Took 4235.1ms to fit the model (about 33.1ms per trial).
+Took 533.4ms to perform inference (about 16.7ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.406/0.208. 
+
+Fold  3
+Took 4235.7ms to fit the model (about 33.1ms per trial).
+Took 634.8ms to perform inference (about 19.8ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.375/0.167. 
+
+Fold  4
+Took 4208.0ms to fit the model (about 32.9ms per trial).
+Took 529.6ms to perform inference (about 16.6ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.438/0.250. 
+
+Fold  5
+Took 4189.6ms to fit the model (about 32.7ms per trial).
+Took 574.3ms to perform inference (about 17.9ms per trial).
+Pilot 1 - Train: 1.000/1.000 - Test: 0.438/0.250. 
+
+Mean training score: 1.000 (accuracy) - 1.000 (kappa)
+Mean test score: 0.412+-0.023 (accuracy) - 0.217+-0.031 (kappa)
+Mean training time per trial: 32.8ms
+Mean testing time per trial: 17.6ms
