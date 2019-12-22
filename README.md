@@ -78,7 +78,7 @@ will be saved (same level as `gdf` or `vhdr` folders).
 
 `conda activate cybathlon`
 
-`jupyter notebook #From ./code/ folder`
+`jupyter notebook` from ./code/ folder
 
 Go to `./code/offline_pipeline/` folder
 
