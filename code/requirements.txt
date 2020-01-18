@@ -18,4 +18,5 @@ xgboost==0.90
 pyqtgraph==0.10
 pylsl
 pyserial
+bokeh==1.4.0
 -e git://github.com/mne-tools/mne-realtime.git@cb06b789a2560e615dfd5f977590f3be1ab0e729#egg=mne_realtime

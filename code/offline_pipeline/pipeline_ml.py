@@ -1,6 +1,7 @@
-from visualization_functions.signal_visualizers import tsne_plot
-from visualization_functions.metric_visualizers import compute_online_metrics, plot_online_metrics
-from visualization_functions.metric_visualizers import plot_full_barchart, plot_cm
+from visualization_functions.signal_visualizers import tsne_plot, plot_cm
+from visualization_functions.metric_visualizers import compute_online_metrics,
+from visualization_functions.metric_visualizers import plot_online_metrics
+from visualization_functions.metric_visualizers import plot_full_barchart
 import xgboost
 from sklearn.metrics import accuracy_score, cohen_kappa_score
 from sklearn.svm import SVC, LinearSVC
