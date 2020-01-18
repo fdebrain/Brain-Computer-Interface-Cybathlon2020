@@ -1,9 +1,10 @@
+import numpy as np
 import logging
 import glob
 from bokeh.models.widgets import Div, Select, Button
 from bokeh.layouts import widgetbox
 from data_loading_functions.data_loader import EEGDataset
-from feature_extraction_functions.models import get_model, train
+from feature_extraction_functions.models import train
 
 # TODO: Train & save model as pickle + Load trained model
 
@@ -12,6 +13,11 @@ class ModelWidget():
     def __init__(self):
         self.data_path = '../Datasets/Pilots/Pilot_2'
         self.available_sessions = glob.glob(f'{self.data_path}/*')
+        self.X, self.y = None, None
+
+    @property
+    def model_name(self):
+        return self.select_model.value
 
     @property
     def session_train(self):
@@ -49,34 +55,39 @@ class ModelWidget():
         logging.info(f"Select session {new.split('_')[-1]}")
         self.button_train.button_type = 'primary'
         self.button_train.label = 'Train'
-        self.info.text = ''
 
-    def on_train(self):
         # Loading data
-        model_name = self.select_model.value
-        assert self.session_train != '', 'Please select a session first !'
-        assert model_name != '', 'Please select a model first !'
+        fs = 250
         self.dataloader_params = {
             'data_path': f'{self.session_train}/formatted_filt_250Hz/',
-            'fs': 250,
+            'fs': fs,
             'filt': False,
             'rereferencing': False,
             'standardization': False,
             'valid_ratio': 0.0,
             'load_test': False,
-            'balanced': True
-        }
+            'balanced': True}
         dataset = EEGDataset(pilot_idx=1, **self.dataloader_params,)
-        X, y, _, _, _, _ = dataset.load_dataset()
+        self.X, self.y, _, _, _, _ = dataset.load_dataset()
 
+        # Update session info
+        self.info.text = f'<b>Classes:</b> {np.unique(self.y)} <br>'
+        self.info.text += f'<b>Nb trials:</b> {len(self.y)} <br>'
+        self.info.text += f'<b>Nb channels:</b> {self.X.shape[1]} <br>'
+        self.info.text += f'<b>Trial length:</b> {self.X.shape[-1] / fs}s <br>'
+
+    def on_train(self):
+        assert self.model_name != '', 'Please select a model !'
+        assert self.session_train != '', 'Please select a session !'
         # Training model
-        cv_model, acc, std = train(model_name, X, y)
-        logging.info(
-            f'Trained successfully \n Accuracy: {acc}+-{std} \n {cv_model.best_estimator_}')
+        cv_model, acc, std = train(self.model_name, self.X, self.y)
+        logging.info(f'Trained successfully \n'
+                     f'Accuracy: {acc}+-{std} \n'
+                     f'{cv_model.best_estimator_}')
 
         # Save trained model
         self.button_train.button_type = 'success'
         self.button_train.label = 'Trained'
 
         # Update info
-        self.info.text = f'Accuracy: {acc:.2f}+-{std:.2f} \n'
+        self.info.text += f'<b>Accuracy:</b> {acc:.2f}+-{std:.2f} <br>'
