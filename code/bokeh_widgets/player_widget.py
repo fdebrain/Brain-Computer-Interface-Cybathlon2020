@@ -1,10 +1,12 @@
 import numpy as np
+import sys
 import logging
 import glob
 import socket
 import subprocess
 import time
 import serial
+import serial.tools.list_ports
 from pyqtgraph.Qt import QtCore
 from bokeh.models.widgets import Div, Select, Button, Toggle
 from bokeh.layouts import widgetbox
@@ -60,6 +62,13 @@ class PlayerWidget:
     def selected_port(self):
         return self.select_port.value
 
+    @property
+    def get_ports(self):
+        if sys.platform == 'linux':
+            return glob.glob(self.ports)
+        elif sys.platform == 'win32':
+            return [p.device for p in serial.tools.list_ports.comports()]
+
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
         game = subprocess.Popen('../game/brainDriver', shell=False)
@@ -108,7 +117,7 @@ class PlayerWidget:
 
     def on_toggle_send_events(self, active):
         # Update list of port devices
-        self.select_port.options = [''] + glob.glob(self.ports)
+        self.select_port.options = [''] + self.get_ports
 
         assert self.port_sender is not None, 'Select port first !'
         if active:
@@ -139,9 +148,8 @@ class PlayerWidget:
         self.toggle_autoplay.on_click(self.on_toggle_autoplay)
 
         # Select - Choose port to send events to
-        self.select_port = Select(title='Select port',
-                                  options=[''])
-        self.select_port.options += glob.glob(self.ports)
+        self.select_port = Select(title='Select port', options=[''])
+        self.select_port.options += self.get_ports
         self.select_port.on_change('value', self.on_select_port)
 
         # Toggle - Send game events to microcontroller port
