@@ -8,7 +8,6 @@ import serial
 from pyqtgraph.Qt import QtCore
 from bokeh.models.widgets import Div, Select, Button, Toggle
 from bokeh.layouts import widgetbox
-from .observer import Observable, Observer
 
 
 class PlayerWidget:
@@ -18,9 +17,9 @@ class PlayerWidget:
         # Game log reader (separate thread)
         self.game_log_reader = None
         self.game_logs_path = '../game/log/raceLog*.txt'
-        self.ports = '/dev/ttyUSB*'
+        self.ports = '/dev/ttyACM*'
         self.log_filename = ''
-        self._expected_action = None
+        self._expected_action = (3, "Rest")
         self.threadpool = QtCore.QThreadPool()
 
         # Port event sender
@@ -51,12 +50,20 @@ class PlayerWidget:
             self.game_player.sendCommand(action_idx)
 
         if self.sending_events:
-            logging.info(f'Send event: {action}')
-            self.port_sender.sendCommand(action_idx)
+            if self.port_sender is not None:
+                self.port_sender.sendCommand(action_idx)
+                logging.info(f'Send event: {action}')
+            else:
+                logging.info('Could not send event')
+
+    @property
+    def selected_port(self):
+        return self.select_port.value
 
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
         game = subprocess.Popen('../game/brainDriver', shell=False)
+        assert game is not None, 'Can\'t launch game !'
         time.sleep(5)
         self.select_logfile.options = [''] + glob.glob(self.game_logs_path)
 
@@ -80,6 +87,7 @@ class PlayerWidget:
         logging.info(f'Select new port: {new}')
         if self.port_sender is None:
             logging.info('Instanciate port sender')
+            logging.info(f'Ports: {self.selected_port}')
             self.port_sender = CommandSenderPort(new)
         else:
             logging.info('Delete old log reader')
@@ -194,7 +202,7 @@ class GamePlayer:
         self.threadpool = QtCore.QThreadPool()
 
     def sendCommand(self, action_idx):
-        ''' Send the command to the game after a delay in a separate thread. '''
+        ''' Send the command to the game after a delay in a separate thread '''
         if action_idx not in [None, 3]:
             command_sender = CommandSenderGame(action_idx)
             self.threadpool.start(command_sender)
@@ -219,7 +227,8 @@ class CommandSenderGame(QtCore.QRunnable):
 
 
 class CommandSenderPort:
-    def __init__(self, port='/dev/ttyUSB0'):
+    def __init__(self, port='/dev/ttyACM0'):
+        logging.info(f'Port: {port}')
         self.serial = serial.Serial(port=port,
                                     baudrate=115200,
                                     parity=serial.PARITY_NONE,
@@ -227,4 +236,5 @@ class CommandSenderPort:
                                     bytesize=serial.EIGHTBITS)
 
     def sendCommand(self, action_idx):
-        self.serial.write(action_idx)
+        message = str(action_idx)
+        self.serial.write(message.encode())
