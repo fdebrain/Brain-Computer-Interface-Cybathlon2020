@@ -19,10 +19,6 @@ class ControllerWidget(Observable):
                                 fs=None, channel_name=None)
         self.t = 0
 
-    def _notify(self):
-        for obs in self._observers:
-            obs.update(self._signal_roi)
-
     @property
     def fs(self):
         return self._data.get('fs', -1)
@@ -36,6 +32,10 @@ class ControllerWidget(Observable):
         for key in arg.keys():
             self.signal_roi[key] = arg[key]
         self._notify()
+
+    def _notify(self):
+        for obs in self._observers:
+            obs.update(self._signal_roi)
 
     @property
     def win_len(self):
@@ -90,7 +90,8 @@ class ControllerWidget(Observable):
     def on_run_change(self, attr, old, new):
         logging.info(f'Select formatter run {new}')
         raw = mne.io.read_raw_brainvision(vhdr_fname=new,
-                                          preload=False)
+                                          preload=False,
+                                          verbose=False)
         available_channels = raw.ch_names
         self.select_channel.options = [''] + available_channels
         self.channel2idx = {c: i for i, c in enumerate(available_channels)}
@@ -115,6 +116,7 @@ class ControllerWidget(Observable):
         end = start + new
         ts = self._data['timestamps'][start:end]
         eeg = self._data['values'][self.channel_idx, start:end]
+        logging.info(f'Win_len update: {ts.shape} - {eeg.shape}')
         self.signal_roi = dict(timestamps=ts, values=eeg)
 
     # TODO: move to visualizer tab
