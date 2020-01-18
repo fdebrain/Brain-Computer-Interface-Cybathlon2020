@@ -111,9 +111,10 @@ class MLExperiment:
             # Define pipeline (feature extraction and classifier)
             assert self.model_name in [
                 'CSP', 'FBCSP', 'Riemann', 'XGB'], "Choose model among {'CSP', 'FBCSP', 'Riemann', 'XGB'}"
+
             if self.model_name == 'CSP':
-                feature_extractor = CSP(
-                    n_classes, self.m, regularize_cov=False)
+                feature_extractor = CSP(n_classes, self.m,
+                                        regularize_cov=False)
                 classifier = SVC(self.C, 'rbf', gamma='scale', random_state=1)
             elif self.model_name == 'FBCSP':
                 feature_extractor = FBCSP(self.fs, n_classes, self.m, k=-1)
@@ -122,12 +123,14 @@ class MLExperiment:
                 feature_extractor = Riemann(self.fs, n_classes)
                 classifier = LinearSVC(C=self.C, random_state=1)
             elif self.model_name == 'XGB':
-                feature_extractor = CSP(
-                    n_classes, self.m, regularize_cov=False)
-                classifier = xgboost.XGBClassifier(
-                    objective="multi:softprob", random_state=1, max_depth=7, n_estimators=500, seed=1)
-            self.model = Pipeline(
-                steps=[('feat', feature_extractor), ('clf', classifier)])
+                feature_extractor = CSP(n_classes, self.m,
+                                        regularize_cov=False)
+                classifier = xgboost.XGBClassifier(objective="multi:softprob",
+                                                   random_state=1, max_depth=7,
+                                                   n_estimators=500, seed=1)
+
+            self.model = Pipeline(steps=[('feat', feature_extractor),
+                                         ('clf', classifier)])
 
             # Training
             train_time = time.time()

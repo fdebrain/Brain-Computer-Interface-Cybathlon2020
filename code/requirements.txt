@@ -5,7 +5,8 @@ h5py
 ipywidgets
 ipykernel
 scipy==1.2.0
-scikit-learn==0.20
+scikit-learn==0.20.3
+scikit-optimize==0.5.2
 mne==0.18
 tensorflow==1.15
 keras==2.1.6
@@ -16,4 +17,5 @@ joblib==0.13.2
 xgboost==0.90
 pyqtgraph==0.10
 pylsl
+pyserial
 -e git://github.com/mne-tools/mne-realtime.git@cb06b789a2560e615dfd5f977590f3be1ab0e729#egg=mne_realtime
