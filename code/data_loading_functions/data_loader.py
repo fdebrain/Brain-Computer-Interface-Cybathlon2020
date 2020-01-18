@@ -146,15 +146,15 @@ class EEGDataset:
             X_test = standardize(X_test)
 
             # Sanity check
-            assert np.isclose(
-                np.mean(np.mean(np.mean(X_train, axis=-1), axis=0)), 0)
-            assert np.isclose(
-                np.mean(np.mean(np.std(X_train, axis=-1), axis=0)), 1, rtol=0.1)
+            assert np.isclose(np.mean(np.mean(np.mean(X_train, axis=-1),
+                                              axis=0)), 0)
+            assert np.isclose(np.mean(np.mean(np.std(X_train, axis=-1),
+                                              axis=0)), 1, rtol=0.1)
             if self.load_test:
-                assert np.isclose(
-                    np.mean(np.mean(np.mean(X_test, axis=-1), axis=0)), 0)
-                assert np.isclose(
-                    np.mean(np.mean(np.std(X_test, axis=-1), axis=0)), 1, rtol=0.1)
+                assert np.isclose(np.mean(np.mean(np.mean(X_test, axis=-1),
+                                                  axis=0)), 0)
+                assert np.isclose(np.mean(np.mean(np.std(X_test, axis=-1),
+                                                  axis=0)), 1, rtol=0.1)
 
         # Splitting into training & validation datasets
         if self.valid_ratio > 0:
