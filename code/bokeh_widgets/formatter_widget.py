@@ -3,7 +3,7 @@ import glob
 import numpy as np
 from collections import Counter
 import mne
-from bokeh.models.widgets import Div, Select, Button
+from bokeh.models.widgets import Div, Select, Button, Slider
 from bokeh.layouts import widgetbox
 from formatting_functions.formatter import FormatterVHDR
 
@@ -21,6 +21,11 @@ class FormatterWidget:
                                         for session_path in self.available_sessions]
         self.select_session.on_change('value', self.on_session_change)
 
+        self.slider_pre_event = Slider(start=-10, end=10, value=-5,
+                                       title='Window start (s before event)')
+        self.slider_post_event = Slider(start=-10, end=15, value=11,
+                                        title='Window end (s after event)')
+
         self.button_format = Button(label="Format", button_type="primary")
         self.button_format.on_click(self.on_format)
 
@@ -28,6 +33,7 @@ class FormatterWidget:
 
         # Create tab with layout
         layout = widgetbox([self.widget_title, self.select_session,
+                            self.slider_pre_event, self.slider_post_event,
                             self.button_format, self.info])
         return layout
 
@@ -38,19 +44,20 @@ class FormatterWidget:
         # Get session info
         fs = None
         events_counter = dict()
-        n_channels, n_samples = None, None
+        n_channels, n_samples = 0, 0
         for run in available_runs:
             raw = mne.io.read_raw_brainvision(vhdr_fname=run,
-                                              preload=False)
+                                              preload=False,
+                                              verbose=False)
 
             fs = int(raw.info['sfreq'])
             n_channels = len(raw.ch_names)
-            n_samples = raw.n_times
-            events = Counter([e[-1]
-                              for e in mne.events_from_annotations(raw)[0]])
+            n_samples += raw.n_times
+            events = Counter([e[-1]for e in mne.events_from_annotations(raw,
+                                                                        verbose=False)[0]])
             for event in events:
-                events_counter[event] = events_counter.get(
-                    event, 0) + events[event]
+                events_counter[event] = events_counter.get(event, 0) + \
+                    events[event]
 
         # Update displayed info
         self.info.text = f'<b>Sampling frequency</b>: {fs} Hz <br>'
@@ -79,8 +86,8 @@ class FormatterWidget:
             pre = -2.
             post = 8.
         else:
-            pre = -5.
-            post = 11.
+            pre = self.slider_pre_event.value
+            post = self.slider_post_event.value
         formatter = FormatterVHDR(root, root, pilot_idx, session_idx,
                                   labels_idx, ch_list, remove_ch,
                                   pre, post, mode='train', save=True,
