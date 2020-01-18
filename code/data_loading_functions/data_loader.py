@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from preprocessing_functions.preproc_functions import rereference, filtering, standardize, clipping
@@ -49,8 +50,8 @@ class EEGDataset():
         self.n_channels = X_train.shape[1]
         self.ch_list = self.ch_list if self.ch_list else np.arange(self.n_channels)
         self.n_samples = X_train.shape[2]
-        
-        print('Properties: {} train trials - {} channels - {}s trial length'.format(X_train.shape[0], self.n_channels, self.n_samples/self.fs))
+        logging.info(f'Shape: {X_train.shape}')
+        logging.info('Properties: {} train trials - {} channels - {}s trial length'.format(X_train.shape[0], self.n_channels, self.n_samples//self.fs))
         
         # Loading test data
         if self.load_test:
@@ -68,8 +69,7 @@ class EEGDataset():
         self.labels_list = self.labels_list if self.labels_list else list(set(y_train))
         
         # Selecting classes
-        print('Selecting classes {} & balancing...'.format(self.labels_list))
-        
+        logging.info('Selecting classes {} & balancing...'.format(self.labels_list))
         if self.balanced:
             n_balanced = np.min([sum(y_train == label) for label in self.labels_list])
             train_idx = np.concatenate([np.where(y_train == label)[0][:n_balanced] for label in self.labels_list])
@@ -88,7 +88,7 @@ class EEGDataset():
         channels_idx = self.ch_list
         X_train = X_train[:, channels_idx, :]
         X_test = X_test[:, channels_idx, :]
-        print('Selecting {} channels'.format(X_train.shape[1]))
+        logging.info(f'Selecting {X_train.shape[1]} channels')
         
         # Selecting time-window # Should be after preprocessing (especially filtering)
         fs = self.fs
@@ -97,11 +97,11 @@ class EEGDataset():
         end = n_samples if self.end==None else int(self.end*self.fs)
         X_train = X_train[:, :, start:end]
         X_test = X_test[:, :, start:end]
-        print('Selecting time-window [{} - {}]s - ({}s)...'.format(start/fs, end/fs, (end-start)/fs))
+        logging.info(f'Selecting time-window [{start/fs} - {end/fs}]s - ({(end-start)/fs}s)...')
 
         # Preprocessing - Re-referencing (mean over channel axis should be 0 for each timestamp)
         if self.rereferencing:
-            print("Re-referencing...")         
+            logging.info("Re-referencing...")         
             X_train = rereference(X_train)
             X_test = rereference(X_test)
 
@@ -112,13 +112,13 @@ class EEGDataset():
 
         # Preprocessing - Filtering
         if self.filt:
-            print("Filtering ({}-{})Hz...".format(self.f_low, self.f_high))
+            logging.info(f'Filtering ({self.f_low}-{self.f_high})Hz...')
             X_train = filtering(X_train, self.fs, self.f_order, self.f_type, self.f_low, self.f_high)
             X_test  = filtering(X_test, self.fs, self.f_order, self.f_type, self.f_low, self.f_high)            
             
         # Preprocessing - Standardization
         if self.standardization:
-            print("Clipping & standardizing...")
+            logging.info("Clipping & standardizing...")
             X_train = clipping(X_train, 6)
             X_test = clipping(X_test, 6)
             X_train = standardize(X_train)
@@ -147,8 +147,8 @@ class EEGDataset():
         if self.load_test==False:
             X_test, y_test = X_valid, y_valid
         
-        print('Output shapes: ', X_train.shape, X_valid.shape, X_test.shape)
-        print('Output classes: ', np.unique(y_train))
+        logging.info(f'Output shapes: {X_train.shape}, {X_valid.shape}, {X_test.shape}')
+        logging.info(f'Output classes: {np.unique(y_train)}')
         return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
@@ -171,7 +171,7 @@ def cropping(X, y, fs=250, n_crops=10, crop_len=2., shuffled=False):
         crop_stride = int((X.shape[-1] - crop_samples) / (n_crops - 1)) # in samples
         overlap_ratio = 1 - crop_stride / crop_samples
         
-        print('Cropping each trial into {} crops of {:.2}s with overlap ratio {:.2} ({} samples)'.format(n_crops, float(crop_len), overlap_ratio, crop_stride))
+        logging.info('Cropping each trial into {} crops of {:.2}s with overlap ratio {:.2} ({} samples)'.format(n_crops, float(crop_len), overlap_ratio, crop_stride))
     
         X_crops = np.concatenate([ np.stack([ X[trial_idx, :, crop_idx*crop_stride : crop_idx*crop_stride + crop_samples] 
                                           for crop_idx in range(n_crops) ], axis=0)

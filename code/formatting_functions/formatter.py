@@ -1,4 +1,4 @@
-from preprocessing_functions.preproc_functions import rereference, standardize, filtering, clipping, exp_standardization
+from preprocessing_functions.preproc_functions import filtering
 import numpy as np
 import glob
 import os
@@ -7,17 +7,17 @@ import scipy.signal
 import re
 import mne
 from joblib import Parallel, delayed
-import multiprocessing
 import resampy
 from copy import deepcopy
 import h5py
+import logging
 
 import sys
 sys.path.append('..')
 
 
 class Formatter:
-    ''' 
+    '''
     Base class for dataset formatter.
 
     What this class does:
@@ -91,12 +91,14 @@ class Formatter:
         print('Numerical stability & filtering...')
         raw = mne_apply(lambda a: a * 1e6, raw)
         if self.preprocess:
-            raw = mne_apply(lambda a: filtering(
-                a, f_low=0.5, f_high=100, fs=raw.info["sfreq"], f_order=5), raw)
+            raw = mne_apply(lambda a: filtering(a, f_low=0.5,
+                                                f_high=100,
+                                                fs=raw.info["sfreq"],
+                                                f_order=5), raw)
 
         # Convert to numpy array
-        eeg = raw.get_data()
-        print('Signal shape: ', eeg.shape)
+        eeg = raw.get_data(verbose=False)
+        logging.info('Signal shape: ', eeg.shape)
 
         # Reshape from (n_samples, n_channels) to (n_channels, n_samples)
         return eeg, events, mapping
@@ -115,8 +117,8 @@ class Formatter:
 
         data = raw.get_data().T
 
-        new_data = resampy.resample(
-            data, raw.info["sfreq"], new_fs, axis=0, filter="kaiser_fast").T
+        new_data = resampy.resample(data, raw.info["sfreq"],
+                                    new_fs, axis=0, filter="kaiser_fast").T
         old_fs = raw.info["sfreq"]
         new_info = deepcopy(raw.info)
         new_info["sfreq"] = new_fs
@@ -142,8 +144,8 @@ class Formatter:
             true_labels = np.array(
                 data['classlabel']) + min(self.labels_idx) - 1
             print('True labels set: ', np.unique(true_labels))
-            labels = self.labelling_test(
-                events, signal_len, true_labels, self.unknown_idx)
+            labels = self.labelling_test(events, signal_len,
+                                         true_labels, self.unknown_idx)
 
         # Sanity check
         print("Counting labels after labelling")
@@ -397,57 +399,62 @@ class FormatterVHDR(Formatter):
 
         if self.control:
             filepaths_pilot = glob.glob(
-                self.root + 'Control_{}/Session_{}/vhdr/*.vhdr'.format(self.pilot_idx, self.session_idx))
-            self.save_path = self.root + \
-                'Control_{}/Session_{}/'.format(self.pilot_idx,
-                                                self.session_idx)
+                f'{self.root}Control_{self.pilot_idx}/Session_{self.session_idx}/vhdr/*.vhdr')
+            self.save_path = f'{self.root}Control_{self.pilot_idx}/Session_{self.session_idx}/'
         else:
             filepaths_pilot = glob.glob(self.root + 'Pilot_{}/Session_{}/vhdr/{}*.vhdr'.format(
                 self.pilot_idx, self.session_idx, 'test/' if self.mode == 'test/' else ''))
-            self.save_path = self.root + \
-                'Pilot_{}/Session_{}/'.format(self.pilot_idx, self.session_idx)
+            self.save_path = f'{self.root}Pilot_{self.pilot_idx}/Session_{self.session_idx}/'
 
-        print('List of EEG sessions: ', filepaths_pilot)
+        logging.info(f'List of EEG sessions: {filepaths_pilot}')
         assert len(filepaths_pilot), 'VHDR file not found !'
 
         # Gather all subsessions into one
         for sub_session_idx in range(len(filepaths_pilot)):
-            print("Start formatting " +
-                  filepaths_pilot[sub_session_idx] + "...")
-            print('Sub-session {}'.format(sub_session_idx + 1))
+            logging.info(
+                f'Start formatting {filepaths_pilot[sub_session_idx]} ...')
+            logging.info(f'Sub-session {sub_session_idx + 1}')
 
             # Import raw EEG file
             raw = mne.io.read_raw_brainvision(filepaths_pilot[sub_session_idx],
-                                              preload=True)
+                                              preload=True, verbose=False)
             # Resample
             if self.resample:
-                print('Resampling from {} to 250 Hz'.format(raw.info['sfreq']))
+                logging.info(f"Resampling from {raw.info['sfreq']} to 250 Hz")
                 raw.resample(250)
 
             # Extract events
-            events = mne.events_from_annotations(raw)[0]
+            events = mne.events_from_annotations(raw, verbose=False)[0]
 
             # Extract channels
             if self.remove_ch:
-                print('Removing the following channels: ', self.remove_ch)
+                logging.info(
+                    f'Removing the following channels: {self.remove_ch}')
                 raw.drop_channels(self.remove_ch)
             if self.ch_list:
-                print('Extracting the following channels: ', self.ch_list)
+                logging.info(
+                    f'Extracting the following channels: {self.ch_list}')
                 raw.pick_channels(self.ch_list)
 
-            print('Fixing numerical unstability')
+            logging.info('Fixing numerical unstability')
             raw = mne_apply(lambda a: a * 1e6, raw)
 
             # Filtering
             if self.preprocess:
-                print('Filtering')
-                raw = mne_apply(lambda a: filtering(
-                    a, f_low=0.5, f_high=100, fs=raw.info['sfreq'], f_order=5), raw)
+                logging.info('Filtering')
+                raw = mne_apply(lambda a: filtering(a, f_low=0.5,
+                                                    f_high=100,
+                                                    fs=raw.info['sfreq'],
+                                                    f_order=5), raw)
 
-            event_ids = dict(
-                zip(['left', 'right', 'both', 'rest'], self.labels_idx))
-            epochs = mne.Epochs(raw, events, event_ids, -
-                                self.pre, self.post, baseline=None, preload=True)
+            event_ids = dict(zip(['left', 'right', 'both', 'rest'],
+                                 self.labels_idx))
+
+            logging.info(
+                f'Extracting epochs in event frame (=0s) {-self.pre}s to {self.post}s')
+            epochs = mne.Epochs(raw, events, event_ids, -self.pre,
+                                self.post, baseline=None, preload=True,
+                                verbose=False)
 
             eeg = epochs.get_data()
             labels = epochs.events[:, -1]
@@ -462,7 +469,7 @@ class FormatterVHDR(Formatter):
 
         # Remap labels
         pilot_labels = pilot_labels - np.min(pilot_labels)
-        print('Output labels', np.unique(pilot_labels))
+        logging.info(f'Output labels: {np.unique(pilot_labels)}')
 
         # Save as .npy file
         if self.save:
@@ -483,8 +490,6 @@ class FormatterMAT(Formatter):
         else:
             print("Please choose among these two modes {train, test}.")
             return
-
-        print(filepaths_all)
 
         for pilot_idx in range(len(filepaths_all)):
             # Load .mat file
@@ -532,4 +537,4 @@ class FormatterMAT(Formatter):
 
 def mne_apply(func, raw):
     new_data = func(raw.get_data())
-    return mne.io.RawArray(new_data, raw.info)
+    return mne.io.RawArray(new_data, raw.info, verbose=False)
