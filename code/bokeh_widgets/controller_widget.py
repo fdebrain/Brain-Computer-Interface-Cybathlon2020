@@ -1,3 +1,4 @@
+import sys
 import glob
 import logging
 import numpy as np
@@ -5,7 +6,12 @@ import mne
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div, Select, Slider, Toggle, Button
 from bokeh.layouts import widgetbox, Spacer
-from .observer import Observer, Observable
+from .observer import Observable
+
+if sys.platform == 'win32':
+    splitter = '\\'
+else:
+    splitter = '/'
 
 
 class ControllerWidget(Observable):
@@ -55,7 +61,7 @@ class ControllerWidget(Observable):
 
         # Select session
         self.select_session = Select(title="Session", options=[''])
-        self.select_session.options += [session_path.split('/')[-1]
+        self.select_session.options += [session_path.split(splitter)[-1]
                                         for session_path in self.available_sessions]
         self.select_session.on_change('value', self.on_session_change)
 
