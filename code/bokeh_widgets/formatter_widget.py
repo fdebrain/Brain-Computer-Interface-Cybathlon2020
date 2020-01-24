@@ -8,6 +8,12 @@ from bokeh.layouts import widgetbox
 from formatting_functions.formatter import FormatterVHDR
 
 
+if sys.platform == 'win32':
+    splitter = '\\'
+else:
+    splitter = '/'
+
+
 class FormatterWidget:
     def __init__(self):
         self.data_path = '../Datasets/Pilots/Pilot_2'
@@ -17,7 +23,8 @@ class FormatterWidget:
         self.widget_title = Div(text='<b>Formatter</b>',
                                 align='center', style={'color': '#000000'})
         self.select_session = Select(title="Session", options=[''])
-        self.select_session.options += [session_path.split('/')[-1]
+        splitter =
+        self.select_session.options += [session_path.split(splitter)[-1]
                                         for session_path in self.available_sessions]
         self.select_session.on_change('value', self.on_session_change)
 
