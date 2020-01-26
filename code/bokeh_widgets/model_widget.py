@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 import glob
+from pyqtgraph.Qt import QtCore
 from bokeh.models.widgets import Div, Select, Button
 from bokeh.layouts import widgetbox
 from data_loading_functions.data_loader import EEGDataset
@@ -9,11 +10,12 @@ from feature_extraction_functions.models import train
 # TODO: Train & save model as pickle + Load trained model
 
 
-class ModelWidget():
+class ModelWidget:
     def __init__(self):
         self.data_path = '../Datasets/Pilots/Pilot_2'
         self.available_sessions = glob.glob(f'{self.data_path}/*')
         self.X, self.y = None, None
+        self.threadpool = QtCore.QThreadPool()
 
     @property
     def model_name(self):
@@ -77,17 +79,29 @@ class ModelWidget():
         self.info.text += f'<b>Trial length:</b> {self.X.shape[-1] / fs}s <br>'
 
     def on_train(self):
-        assert self.model_name != '', 'Please select a model !'
-        assert self.session_train != '', 'Please select a session !'
+        trainer_widget = TrainerWidget(self)
+        self.threadpool.start(trainer_widget)
+
+
+class TrainerWidget(QtCore.QRunnable):
+    def __init__(self, parent):
+        super(TrainerWidget, self).__init__()
+        self.parent = parent
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        assert self.parent.model_name != '', 'Please select a model !'
+        assert self.parent.session_train != '', 'Please select a session !'
         # Training model
-        cv_model, acc, std = train(self.model_name, self.X, self.y)
+        cv_model, acc, std = train(self.parent.model_name,
+                                   self.parent.X, self.parent.y)
         logging.info(f'Trained successfully \n'
                      f'Accuracy: {acc}+-{std} \n'
                      f'{cv_model.best_estimator_}')
 
         # Save trained model
-        self.button_train.button_type = 'success'
-        self.button_train.label = 'Trained'
+        self.parent.button_train.button_type = 'success'
+        self.parent.button_train.label = 'Trained'
 
         # Update info
-        self.info.text += f'<b>Accuracy:</b> {acc:.2f}+-{std:.2f} <br>'
+        self.parent.info.text += f'<b>Accuracy:</b> {acc:.2f}+-{std:.2f} <br>'
