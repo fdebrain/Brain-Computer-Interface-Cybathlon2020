@@ -89,7 +89,7 @@ def train(model_name, X_train, y_train, n_iters=10):
     logging.info('Starting Bayes optimization')
     gridSearch = BayesSearchCV(model, search_space, n_iter=n_iters,
                                scoring='accuracy', cv=skf,
-                               n_jobs=1, verbose=1)
+                               n_jobs=4, verbose=1)
     gridSearch.fit(X_train, y_train)
 
     scores = [gridSearch.cv_results_[f'split{k}_test_score'][gridSearch.best_index_]
