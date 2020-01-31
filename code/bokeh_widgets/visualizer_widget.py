@@ -4,9 +4,10 @@ import logging
 import numpy as np
 import mne
 from bokeh.io import curdoc
-from bokeh.models.widgets import Div, Select, Slider, Toggle, Button
-from bokeh.layouts import widgetbox, Spacer
-from .observer import Observable
+from bokeh.plotting import figure
+from bokeh.models import ColumnDataSource
+from bokeh.models import Div, Select, Slider, Toggle
+from bokeh.layouts import column, row
 
 if sys.platform == 'win32':
     splitter = '\\'
@@ -14,34 +15,18 @@ else:
     splitter = '/'
 
 
-class ControllerWidget(Observable):
+class VisualizerWidget:
     def __init__(self):
-        Observable.__init__(self)
         self.data_path = '../Datasets/Pilots/Pilot_2'
         self.available_sessions = glob.glob(f'{self.data_path}/*')
         self.channel2idx = {}
-        self._data = dict()
-        self._signal_roi = dict(timestamps=[], values=[],
-                                fs=None, channel_name=None)
         self.t = 0
+        self._data = dict()
+        self.source = ColumnDataSource(data=dict(timestamps=[], values=[]))
 
     @property
     def fs(self):
         return self._data.get('fs', -1)
-
-    @property
-    def signal_roi(self):
-        return self._signal_roi
-
-    @signal_roi.setter
-    def signal_roi(self, arg):
-        for key in arg.keys():
-            self.signal_roi[key] = arg[key]
-        self._notify()
-
-    def _notify(self):
-        for obs in self._observers:
-            obs.update(self._signal_roi)
 
     @property
     def win_len(self):
@@ -82,11 +67,20 @@ class ControllerWidget(Observable):
         self.play_toggle = Toggle(label='Play', button_type="primary")
         self.play_toggle.on_click(self.on_toggle_play)
 
-        layout = widgetbox([self.widget_title, self.select_session,
-                            self.select_run, self.select_channel,
-                            Spacer(height=5), self.win_len_slider,
-                            Spacer(height=6), self.play_toggle])
-        return layout
+        # Plot - EEG temporal signal
+        self.plot_signal = figure(title='Temporal EEG signal',
+                                  x_axis_label='Time [s]',
+                                  y_axis_label='Amplitude',
+                                  plot_height=450,
+                                  plot_width=850)
+        self.plot_signal.line(x='timestamps', y='values',
+                              source=self.source)
+
+        column1 = column(self.widget_title, self.select_session,
+                         self.select_run, self.select_channel,
+                         self.win_len_slider, self.play_toggle)
+        column2 = column(self.plot_signal)
+        return row(column1, column2)
 
     def on_session_change(self, attr, old, new):
         logging.info(f'Select controller session {new}')
@@ -109,12 +103,15 @@ class ControllerWidget(Observable):
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select channel {new}')
 
-        # Extract current signal ROI
+        # Update source
         start = int(self.t * self.fs)
         end = start + self.win_len
         ts = self._data['timestamps'][start:end]
         eeg = self._data['values'][self.channel_idx, start:end]
-        self.signal_roi = dict(timestamps=ts, values=eeg, channel_name=new)
+        self.source.data = dict(timestamps=ts, values=eeg)
+
+        # Update plot axis label
+        self.plot_signal.yaxis.axis_label = f'Amplitude - {self.channel_name}'
 
     def update_win_len(self, attr, old, new):
         logging.info(f'Win_len update: {new}')
@@ -123,19 +120,18 @@ class ControllerWidget(Observable):
         ts = self._data['timestamps'][start:end]
         eeg = self._data['values'][self.channel_idx, start:end]
         logging.info(f'Win_len update: {ts.shape} - {eeg.shape}')
-        self.signal_roi = dict(timestamps=ts, values=eeg)
+        self.source.data = dict(timestamps=ts, values=eeg)
 
-    # TODO: move to visualizer tab
     def callback_play(self):
         shift = 5
         start = int(self.t*self.fs + self.win_len)
         end = start + shift
 
-        ts = np.roll(self._signal_roi['timestamps'], -shift)
+        ts = np.roll(self.source.data['timestamps'], -shift)
         ts[-shift:] = self._data['timestamps'][start:end]
-        eeg = np.roll(self._signal_roi['values'], -shift, axis=-1)
+        eeg = np.roll(self.source.data['values'], -shift, axis=-1)
         eeg[-shift:] = self._data['values'][self.channel_idx, start:end]
-        self.signal_roi = dict(timestamps=ts, values=eeg)
+        self.source.data = dict(timestamps=ts, values=eeg)
         self.t += shift / self.fs
 
     def on_toggle_play(self, state):
