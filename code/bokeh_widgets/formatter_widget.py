@@ -1,11 +1,10 @@
 import sys
 import logging
 import glob
-import numpy as np
 from collections import Counter
 import mne
 from bokeh.models.widgets import Div, Select, Button, Slider
-from bokeh.layouts import widgetbox
+from bokeh.layouts import widgetbox, row
 from formatting_functions.formatter import FormatterVHDR
 
 
@@ -20,6 +19,10 @@ class FormatterWidget:
         self.data_path = '../Datasets/Pilots/Pilot_2'
         self.available_sessions = glob.glob(f'{self.data_path}/*')
 
+    @property
+    def labels_idx(self):
+        return [int(s.value) for s in self.select_labels]
+
     def create_widget(self):
         self.widget_title = Div(text='<b>Formatter</b>',
                                 align='center', style={'color': '#000000'})
@@ -27,6 +30,12 @@ class FormatterWidget:
         self.select_session.options += [session_path.split(splitter)[-1]
                                         for session_path in self.available_sessions]
         self.select_session.on_change('value', self.on_session_change)
+
+        self.select_labels = [Select(title=f'Label {id+1}',
+                                     options=[str(i) for i in range(10)],
+                                     value=str(id+3),
+                                     width=80)
+                              for id in range(4)]
 
         self.slider_pre_event = Slider(start=-10, end=10, value=-5,
                                        title='Window start (s before event)')
@@ -40,6 +49,7 @@ class FormatterWidget:
 
         # Create tab with layout
         layout = widgetbox([self.widget_title, self.select_session,
+                            row(self.select_labels),
                             self.slider_pre_event, self.slider_post_event,
                             self.button_format, self.info])
         return layout
@@ -85,7 +95,8 @@ class FormatterWidget:
         root = '../Datasets/Pilots/'
         pilot_idx = 2
         session_idx = self.select_session.value.split('_')[-1]
-        labels_idx = [3, 4, 5, 6]
+
+        logging.info(self.labels_idx)
 
         ch_list = None
         remove_ch = ['Fp1', 'Fp2']
@@ -96,7 +107,7 @@ class FormatterWidget:
             pre = self.slider_pre_event.value
             post = self.slider_post_event.value
         formatter = FormatterVHDR(root, root, pilot_idx, session_idx,
-                                  labels_idx, ch_list, remove_ch,
+                                  self.labels_idx, ch_list, remove_ch,
                                   pre, post, mode='train', save=True,
                                   save_folder='formatted_filt_250Hz',
                                   preprocess=True, resample=True,
