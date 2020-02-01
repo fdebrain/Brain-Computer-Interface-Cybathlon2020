@@ -41,9 +41,6 @@ class VisualizerWidget:
         return self.channel2idx[self.channel_name]
 
     def create_widget(self):
-        self.widget_title = Div(text='<b>Controller</b>',
-                                align='center')
-
         # Select session
         self.select_session = Select(title="Session", options=[''])
         self.select_session.options += [session_path.split(splitter)[-1]
@@ -76,19 +73,21 @@ class VisualizerWidget:
         self.plot_signal.line(x='timestamps', y='values',
                               source=self.source)
 
-        column1 = column(self.widget_title, self.select_session,
+        self.div_info = Div()
+
+        column1 = column(self.select_session,
                          self.select_run, self.select_channel,
                          self.win_len_slider, self.play_toggle)
         column2 = column(self.plot_signal)
         return row(column1, column2)
 
     def on_session_change(self, attr, old, new):
-        logging.info(f'Select controller session {new}')
+        logging.info(f'Select visualizer session {new}')
         available_runs = glob.glob(f'{self.data_path}/{new}/vhdr/*.vhdr')
         self.select_run.options = [''] + available_runs
 
     def on_run_change(self, attr, old, new):
-        logging.info(f'Select formatter run {new}')
+        logging.info(f'Select visualizer run {new}')
         raw = mne.io.read_raw_brainvision(vhdr_fname=new,
                                           preload=False,
                                           verbose=False)
@@ -134,8 +133,9 @@ class VisualizerWidget:
         self.source.data = dict(timestamps=ts, values=eeg)
         self.t += shift / self.fs
 
-    def on_toggle_play(self, state):
-        if state:
+    def on_toggle_play(self, active):
+        assert self.channel_name != '', 'Select a channel first!'
+        if active:
             logging.info('Play')
             self.play_toggle.button_type = 'warning'
             self.callback = curdoc().add_periodic_callback(self.callback_play,
