@@ -6,7 +6,7 @@ from bokeh.io import curdoc
 from bokeh.models.widgets import Tabs, Panel
 from bokeh_widgets.formatter_widget import FormatterWidget
 from bokeh_widgets.visualizer_widget import VisualizerWidget
-from bokeh_widgets.model_widget import ModelWidget
+from bokeh_widgets.trainer_widget import TrainerWidget
 from bokeh_widgets.player_widget import PlayerWidget
 
 document = curdoc()
@@ -18,7 +18,7 @@ root_logger.setLevel(logging.INFO)
 # Widgets and tabs
 formatter = FormatterWidget().create_widget()
 visualizer = VisualizerWidget().create_widget()
-trainer = ModelWidget().create_widget()
+trainer = TrainerWidget().create_widget()
 player = PlayerWidget(parent=document).create_widget()
 
 # Layout
