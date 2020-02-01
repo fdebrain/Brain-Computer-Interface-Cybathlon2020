@@ -28,7 +28,7 @@ def get_CSP_model():
 def get_FBCSP_model():
     model_name = 'FBCSP'
     search_space = {'classifier__C': (1e-1, 1e3, 'log-uniform')}
-    model = Pipeline([('feat', FBCSP(fs=250, f_type='butter', m=2, k=-1)),
+    model = Pipeline([('feat', FBCSP(fs=500, f_type='butter', m=2, k=-1)),
                       ('classifier', SVC(kernel='rbf', gamma='scale', C=10))])
     return model, search_space, model_name
 
@@ -40,7 +40,7 @@ def get_Riemann_model():
                     'classifier__kernel': ['rbf', 'linear', 'poly'],
                     'classifier__degree': (1, 5),
                     'classifier__C': (1e-1, 1e3, 'log-uniform')}
-    model = Pipeline([('feat', Riemann(fs=250)),
+    model = Pipeline([('feat', Riemann(fs=500)),
                       ('classifier', SVC(kernel='linear', gamma='scale', C=10))])
     return model, search_space, model_name
 
@@ -66,14 +66,7 @@ def get_model(model_str):
     return model, search_space, model_name
 
 
-def train(model_name, X_train, y_train, n_iters=1):
-    # Extract MI phase
-    fs = 250
-    start = 2.5
-    end = 6.
-    logging.info(f'Extracting MI: [{start} to {end}]s')
-    X_train = X_train[:, :, int(start*fs): int(end*fs)]
-
+def train(model_name, X_train, y_train, n_iters=10):
     # Load model
     model, search_space, model_name = get_model(model_name)
     start_time = time.time()
@@ -85,7 +78,8 @@ def train(model_name, X_train, y_train, n_iters=1):
     # Optimize
     logging.info('Starting Bayes optimization')
     gridSearch = BayesSearchCV(model, search_space, cv=skf, n_jobs=1,
-                               refit=True, scoring='accuracy', n_iter=n_iters,)
+                               refit=True, scoring='accuracy', n_iter=n_iters,
+                               verbose=True)
     gridSearch.fit(X_train, y_train)
 
     scores = [gridSearch.cv_results_[f'split{k}_test_score'][gridSearch.best_index_]
