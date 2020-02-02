@@ -1,9 +1,7 @@
 import logging
-import time
 import serial
 import socket
 
-import numpy as np
 from pyqtgraph.Qt import QtCore
 
 
@@ -14,9 +12,8 @@ class GamePlayer:
 
     def sendCommand(self, action_idx):
         ''' Send the command to the game after a delay in a separate thread '''
-        if action_idx not in [None, 3]:
-            command_sender = CommandSenderGame(action_idx)
-            self.thread_game.start(command_sender)
+        command_sender = CommandSenderGame(action_idx)
+        self.thread_game.start(command_sender)
 
 
 class CommandSenderGame(QtCore.QRunnable):
@@ -28,12 +25,11 @@ class CommandSenderGame(QtCore.QRunnable):
         self.UDP_IP = "127.0.0.1"
         self.UDP_PORT = 5555
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP
-        self.commands = {0: "\x0B", 1: "\x0D", 2: "\x0C", 3: ""}
+        self.commands = {0: "\x0B", 1: "\x0D", 2: "\x0C"}
 
     @QtCore.pyqtSlot()
     def run(self):
-        # TODO: only random delay when autoplay
-        time.sleep(np.random.random_sample())
+        assert self.action_idx in self.commands.keys(), 'Action unknown'
         self.sock.sendto(bytes(self.commands[self.action_idx], "utf-8"),
                          (self.UDP_IP, self.UDP_PORT))
 
