@@ -24,12 +24,13 @@ from src.game_log_reader import GameLogReader
 class PlayerWidget:
     def __init__(self, parent=None):
         self.player_idx = 1
+        self.fs = 500
 
         # Game log reader (separate thread)
         self.game_log_reader = None
         self.game_logs_path = '../game/log/raceLog*.txt'
         self.ports = '/dev/ttyACM*'
-        self._expected_action = (3, "Rest")
+        self._expected_action = None
         self.thread_log = QtCore.QThreadPool()
 
         # Port event sender
@@ -37,21 +38,23 @@ class PlayerWidget:
 
         # Game player
         self.game_player = GamePlayer(self.player_idx)
+        self.game_start_time = None
+        self.callback_action_id = None
+        self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
+                                                   y_pred=[]))
+        self.idx2action = {0: "Left", 1: "Right", 2: "Light", 3: "Rest"}
 
         # LSL stream reader
         self.parent = parent
         self.lsl_reader = None
-        self.signal_source = ColumnDataSource(dict(ts=[], data=[]))
         self.thread_lsl = QtCore.QThreadPool()
         self.callback_lsl_id = None
+        self.channel_source = ColumnDataSource(dict(ts=[], data=[]))
 
         # Model
         self.model = None
         self.signal = None
-        self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
-                                                   y_pred=[]))
-        self._last_pred = None
-        self.callback_pred_id = None
+        self._last_pred = (3, "Rest")
 
     @property
     def selected_settings(self):
@@ -81,19 +84,21 @@ class PlayerWidget:
 
     @expected_action.setter
     def expected_action(self, action):
+        logging.info(f'Receiving expected action {action}')
         action_idx, action_name = action
         self._expected_action = action
 
-        if self.autoplay:
-            logging.info(f'Autoplay: {action}')
-            self.game_player.sendCommand(action_idx)
+        # Reset timer & start action callback (autopilot/prediction)
+        if action_name == 'Game start':
+            logging.info('Game start')
+            self.game_start_time = time.time()
+            self.parent.add_next_tick_callback(self.create_action_callback)
 
+        # Send groundtruth to microcontroller
         if self.sending_events:
-            if self.port_sender is not None:
-                self.port_sender.sendCommand(action_idx)
-                logging.info(f'Send event: {action}')
-            else:
-                logging.info('Could not send event')
+            assert self.port_sender is not None, 'Please select a port !'
+            self.port_sender.sendCommand(action_idx)
+            logging.info(f'Send event: {action}')
 
     @property
     def get_ports(self):
@@ -125,7 +130,7 @@ class PlayerWidget:
             self.thread_log.clear()
             del self.game_log_reader
 
-        logging.info('Instanciate log reader')
+        logging.info(f'Instanciate log reader {log_filename}')
         self.game_log_reader = GameLogReader(self, log_filename,
                                              self.player_idx)
         self.thread_log.start(self.game_log_reader)
@@ -142,36 +147,37 @@ class PlayerWidget:
         self.port_sender = CommandSenderPort(new)
 
     def on_checkbox_settings_change(self, active):
+        logging.info(f'Active settings: {active}')
         self.select_port.options = [''] + self.get_ports
         self.select_model.options = [''] + glob.glob('./saved_models/*.pkl')
 
-        if self.sending_events:
-            assert self.port_sender is not None, 'Select port first !'
-            logging.info('Active events sending')
+        if self.autoplay and self.should_predict:
+            logging.info('Deactivate autoplay first !')
+            self.checkbox_settings.active = []
 
-        if self.autoplay and not self.should_predict:
-            assert self.game_log_reader is not None, 'Select log filename first !'
-            logging.info('Activate autoplay')
-            self.game_player.sendCommand(self.expected_action[0])
+        if self.autoplay and self.game_log_reader is None:
+            logging.info('Launch game first !')
+            self.checkbox_settings.active = []
 
-        elif self.should_predict and not self.autoplay:
-            assert self.model is not None, 'Load pre-trained model first !'
-            logging.info('Activate model prediction')
-            self.callback_pred_id = self.parent.add_periodic_callback(self.callback_pred,
-                                                                      250)
-        elif self.callback_pred_id and not self.should_predict:
-            logging.info('Activate model prediction')
-            self.parent.remove_periodic_callback(self.callback_pred_id)
-            self.callback_pred_id = None
+        if self.should_predict and self.model is None:
+            logging.info('Load pre-trained model first !')
+            self.checkbox_settings.active = []
+        elif self.should_predict and self.callback_action_id is None:
+            self.create_action_callback()
 
-    def callback_pred(self):
+        if self.sending_events and self.port_sender is None:
+            logging.info('Select port first !')
+            self.checkbox_settings.active = []
+
+    def predict(self):
+        assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
         X = np.copy(self.signal)
         X = np.delete(X, [0, 30], axis=0)
 
         # Preprocessing
         if 'Filter' in self.selected_preproc:
             X = filtering(X, f_low=0.5, f_high=38,
-                          fs=500, f_order=3)
+                          fs=self.fs, f_order=3)
 
         if 'Standardize' in self.selected_preproc:
             X = clipping(X, 6)
@@ -180,17 +186,59 @@ class PlayerWidget:
         if 'Rereference' in self.selected_preproc:
             X = rereference(X)
 
-        # Predict on the most recent 3.5s of signal
+        # Predict on 3.5s of signal (avoid edge effects of filtering)
         action_idx = self.model.predict(X[np.newaxis, :, 100:1850])[0]
         assert action_idx in [0, 1, 2, 3], \
             'Prediction is not in allowed action space'
+        return action_idx
 
-        # Send command
-        self.game_player.sendCommand(action_idx)
-        self._last_pred = action_idx
+    def create_action_callback(self):
+        assert self.callback_action_id is None, 'Action callback already exists!'
+        logging.info('Create action callback')
+        self.callback_action_id = self.parent.add_periodic_callback(
+            self.callback_action, 1000)
 
-        self.div_info.text = f'<b>Model:</b> {self.model_name} <br>' \
-            f'<b>Groundtruth:</b> {self._expected_action} <br>' \
+    def remove_action_callback(self):
+        assert self.callback_action_id is not None, 'Action callback doesn\'t exist'
+        logging.info('Remove action callback')
+        self.parent.remove_periodic_callback(self.callback_action_id)
+        self.callback_action_id = None
+
+    def callback_action(self):
+        ''' This periodic callback starts at the same time that the race '''
+        # Case 1: Autopilot - Return expected action from logs
+        if self.autoplay:
+            model_name = 'Autoplay'
+            # time.sleep(np.random.random_sample())
+            action_idx = self.expected_action[0]
+
+        # Case 2: Model prediction - Predict from LSL stream
+        elif self.should_predict:
+            model_name = self.model_name
+            action_idx = self.predict()
+
+        # Case 3: Remove callback
+        else:
+            self.remove_action_callback()
+            return
+
+        # Send action to game avatar (if not rest command)
+        if action_idx in [0, 1, 2]:
+            logging.info(f'Sending: {action_idx}')
+            self.game_player.sendCommand(action_idx)
+
+        self._last_pred = (action_idx, self.idx2action[action_idx])
+
+        # Update chronogram source (if race started)
+        if self.game_start_time is not None:
+            ts = time.time() - self.game_start_time
+            self.chrono_source.stream(dict(ts=[ts],
+                                           y_true=[self.expected_action[0]],
+                                           y_pred=[action_idx]))
+
+        # Update information display
+        self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
+            f'<b>Groundtruth:</b> {self.expected_action} <br>' \
             f'<b>Prediction:</b> {self._last_pred} <br>'
 
     def on_model_change(self, attr, old, new):
@@ -201,7 +249,7 @@ class PlayerWidget:
 
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select new channel {new}')
-        self.signal_source.data['data'] = []
+        self.channel_source.data['data'] = []
         self.plot_stream.yaxis.axis_label = f'Amplitude ({new})'
 
     def on_lsl_connect(self):
@@ -217,18 +265,30 @@ class PlayerWidget:
                 logging.info('Start periodic callback - LSL')
                 self.select_channel.options = [f'{i} - {ch}' for i, ch
                                                in enumerate(self.lsl_reader.ch_names)]
-                self.callback_lsl_id = self.parent.add_periodic_callback(self.callback_lsl,
-                                                                         100)
+                self.create_lsl_callback()
                 self.button_lsl.button_type = 'success'
         except Exception as e:
             logging.info(e)
             self.lsl_reader = None
+
+    def create_lsl_callback(self):
+        assert self.callback_lsl_id is None, 'LSL callback already exists!'
+        self.callback_lsl_id = self.parent.add_periodic_callback(
+            self.callback_lsl, 100)
+
+    def remove_lsl_callback(self):
+        assert self.callback_lsl_id is not None, 'LSL callback doesn\'t exist'
+        self.parent.remove_periodic_callback(self.callback_lsl_id)
+        self.callback_lsl_id = None
 
     def callback_lsl(self):
         ''' Fetch EEG data from LSL stream '''
         data, ts = [], []
         try:
             data, ts = self.lsl_reader.get_data()
+
+            # Convert timestamps in seconds
+            ts /= self.fs
 
             if len(data.shape) > 1:
                 # Clean signal and reference TODO: just for visualization purpose
@@ -237,9 +297,9 @@ class PlayerWidget:
 
                 # Update source
                 ch = self.channel_idx
-                self.signal_source.stream(dict(ts=ts,
-                                               data=data[ch, :]),
-                                          rollover=1000)
+                self.channel_source.stream(dict(ts=ts,
+                                                data=data[ch, :]),
+                                           rollover=1000)
                 # Update signal
                 chunk_size = data.shape[-1]
                 self.signal = np.roll(self.signal, -chunk_size, axis=-1)
@@ -248,12 +308,8 @@ class PlayerWidget:
         except Exception as e:
             logging.info(f'Ending periodic callback - {e}')
             self.button_lsl.button_type = 'warning'
-            if self.callback_lsl_id:
-                self.parent.remove_periodic_callback(self.callback_lsl_id)
-                self.callback_lsl_id = None
-            if self.callback_pred_id:
-                self.parent.remove_periodic_callback(self.callback_pred_id)
-                self.callback_pred_id = None
+            self.remove_lsl_callback()
+            self.remove_action_callback()
 
     def create_widget(self):
         # Button - Launch Cybathlon game in new window
@@ -279,7 +335,8 @@ class PlayerWidget:
         self.div_settings = Div(text='<b>Settings</b>', align='center')
         self.checkbox_settings = CheckboxButtonGroup(labels=['Autoplay',
                                                              'Predict',
-                                                             'Send events'])
+                                                             'Send events'],
+                                                     active=[0])
         self.checkbox_settings.on_click(self.on_checkbox_settings_change)
 
         # Checkbox - Choose preprocessing steps
@@ -298,7 +355,7 @@ class PlayerWidget:
                                   y_axis_label='Amplitude',
                                   plot_height=500,
                                   plot_width=800)
-        self.plot_stream.line(x='ts', y='data', source=self.signal_source)
+        self.plot_stream.line(x='ts', y='data', source=self.channel_source)
 
         # Plot - Chronogram prediction vs results
         self.plot_chronogram = figure(title='Chronogram',
@@ -308,8 +365,8 @@ class PlayerWidget:
                                       plot_width=800)
         self.plot_chronogram.line(x='ts', y='y_true', color='blue',
                                   source=self.chrono_source)
-        self.plot_chronogram.line(x='ts', y='y_pred', color='red',
-                                  source=self.chrono_source)
+        self.plot_chronogram.cross(x='ts', y='y_pred', color='red',
+                                   source=self.chrono_source)
 
         # Div - Display useful information
         self.div_info = Div()

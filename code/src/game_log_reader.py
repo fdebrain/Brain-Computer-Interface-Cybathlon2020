@@ -32,7 +32,11 @@ class GameLogReader(QtCore.QRunnable):
         loglines = self.follow(logfile)
 
         for line in loglines:
-            if ("p{}_expectedInput".format(self.player_idx) in line):
+            if ("start race" in line):
+                self.notify((3, 'Game start'))
+
+            # Exctract expected actions (groundtruth) & notify player widget
+            elif ("p{}_expectedInput".format(self.player_idx) in line):
                 if "none" in line:
                     expected_action = self.log2actions['none']
                 else:
