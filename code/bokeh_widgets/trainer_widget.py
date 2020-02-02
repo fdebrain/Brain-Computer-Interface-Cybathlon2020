@@ -2,11 +2,17 @@ import numpy as np
 import logging
 import glob
 import os
+import sys
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div, Select, Button, CheckboxButtonGroup, CheckboxGroup
 from bokeh.layouts import widgetbox
 from data_loading_functions.data_loader import EEGDataset
 from feature_extraction_functions.models import train, save_model
+
+if sys.platform == 'win32':
+    splitter = '\\'
+else:
+    splitter = '/'
 
 
 class TrainerWidget:
@@ -90,7 +96,7 @@ class TrainerWidget:
     def on_load(self):
         X, y = {}, {}
         for session_path in self.train_ids:
-            id = session_path.split('/')[-1]
+            id = session_path.split(splitter)[-1]
             logging.info(f'Loading {id}')
             self.dataloader_params = {
                 'data_path': f'{session_path}/formatted_filt_{self.fs}Hz/',
@@ -156,7 +162,7 @@ class TrainerWidget:
                 os.mkdir(dir_path)
 
             logging.info(f'Saving model...')
-            dataset_name = '_'.join([id.split('/')[-1]
+            dataset_name = '_'.join([id.split(splitter)[-1]
                                      for id in self.train_ids])
             pkl_filename = f"{self.model_name}_{dataset_name}.pkl"
             save_model(cv_model.best_estimator_, dir_path, pkl_filename)
