@@ -138,7 +138,7 @@ class TrainerWidget:
         try:
             cv_model, acc, std, timing = train(self.model_name,
                                                self.X, self.y,
-                                               n_iters=10)
+                                               n_iters=1)
         except Exception as e:
             logging.info(f'Training failed - {e}')
             self.button_train.button_type = 'danger'
