@@ -1,6 +1,5 @@
 import glob
 import logging
-import socket
 import subprocess
 import sys
 import time
@@ -11,14 +10,15 @@ import serial.tools.list_ports
 from bokeh.plotting import figure
 from bokeh.layouts import row, column
 from bokeh.models import ColumnDataSource
-from bokeh.models.widgets import Button, Div, Select
-from bokeh.models import CheckboxButtonGroup
-from pylsl import StreamInlet, resolve_streams
+from bokeh.models.widgets import Button, Div, Select, CheckboxButtonGroup
 from pyqtgraph.Qt import QtCore
 
 from feature_extraction_functions.models import load_model
 from preprocessing_functions.preproc_functions import filtering, rereference
 from preprocessing_functions.preproc_functions import clipping, standardize
+from src.lsl_client import LSLClient
+from src.game_player import GamePlayer, CommandSenderPort
+from src.game_log_reader import GameLogReader
 
 
 class PlayerWidget:
@@ -48,6 +48,8 @@ class PlayerWidget:
         # Model
         self.model = None
         self.signal = None
+        self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
+                                                   y_pred=[]))
         self._last_pred = None
         self.callback_pred_id = None
 
@@ -104,6 +106,10 @@ class PlayerWidget:
     def model_name(self):
         return self.select_model.value
 
+    @property
+    def channel_idx(self):
+        return int(self.select_channel.value.split('-')[0])
+
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
         game = subprocess.Popen('../game/brainDriver', shell=False)
@@ -153,11 +159,14 @@ class PlayerWidget:
             logging.info('Activate model prediction')
             self.callback_pred_id = self.parent.add_periodic_callback(self.callback_pred,
                                                                       250)
+        elif self.callback_pred_id and not self.should_predict:
+            logging.info('Activate model prediction')
+            self.parent.remove_periodic_callback(self.callback_pred_id)
+            self.callback_pred_id = None
 
     def callback_pred(self):
         X = np.copy(self.signal)
         X = np.delete(X, [0, 30], axis=0)
-        logging.info(f'{X.shape} - {self.signal.shape}')
 
         # Preprocessing
         if 'Filter' in self.selected_preproc:
@@ -189,6 +198,11 @@ class PlayerWidget:
         self.model = load_model(new)
         self.select_model.options = [''] + glob.glob('./saved_models/*.pkl')
         # TODO: Deep learning case
+
+    def on_channel_change(self, attr, old, new):
+        logging.info(f'Select new channel {new}')
+        self.signal_source.data['data'] = []
+        self.plot_stream.yaxis.axis_label = f'Amplitude ({new})'
 
     def on_lsl_connect(self):
         if self.lsl_reader is not None:
@@ -222,8 +236,9 @@ class PlayerWidget:
                 data = 1e6 * data
 
                 # Update source
+                ch = self.channel_idx
                 self.signal_source.stream(dict(ts=ts,
-                                               data=data[0, :]),
+                                               data=data[ch, :]),
                                           rollover=1000)
                 # Update signal
                 chunk_size = data.shape[-1]
@@ -235,8 +250,10 @@ class PlayerWidget:
             self.button_lsl.button_type = 'warning'
             if self.callback_lsl_id:
                 self.parent.remove_periodic_callback(self.callback_lsl_id)
+                self.callback_lsl_id = None
             if self.callback_pred_id:
                 self.parent.remove_periodic_callback(self.callback_pred_id)
+                self.callback_pred_id = None
 
     def create_widget(self):
         # Button - Launch Cybathlon game in new window
@@ -272,7 +289,8 @@ class PlayerWidget:
                                                             'Rereference'])
 
         # Select - Channel to visualize TODO: get channel names for LSL to get
-        self.select_channel = Select(title='Select channel')
+        self.select_channel = Select(title='Select channel', value='0 - Fp1')
+        self.select_channel.on_change('value', self.on_channel_change)
 
         # Plot - LSL EEG Stream
         self.plot_stream = figure(title='Temporal EEG signal',
@@ -281,6 +299,17 @@ class PlayerWidget:
                                   plot_height=500,
                                   plot_width=800)
         self.plot_stream.line(x='ts', y='data', source=self.signal_source)
+
+        # Plot - Chronogram prediction vs results
+        self.plot_chronogram = figure(title='Chronogram',
+                                      x_axis_label='Time [s]',
+                                      y_axis_label='Action',
+                                      plot_height=300,
+                                      plot_width=800)
+        self.plot_chronogram.line(x='ts', y='y_true', color='blue',
+                                  source=self.chrono_source)
+        self.plot_chronogram.line(x='ts', y='y_pred', color='red',
+                                  source=self.chrono_source)
 
         # Div - Display useful information
         self.div_info = Div()
@@ -291,128 +320,6 @@ class PlayerWidget:
                          self.select_channel,
                          self.div_settings, self.checkbox_settings,
                          self.div_preproc, self.checkbox_preproc)
-        column2 = column(self.plot_stream)
+        column2 = column(self.plot_stream, self.plot_chronogram)
         column3 = column(self.div_info)
         return row(column1, column2, column3)
-
-
-class GameLogReader(QtCore.QRunnable):
-    def __init__(self, parent, logfilename, player_idx):
-        super(GameLogReader, self).__init__()
-        self.parent = parent
-        self.logfilename = logfilename
-        self.player_idx = player_idx
-        self.log2actions = {"leftWinker": (0, "Left"),
-                            "rightWinker": (1, "Right"),
-                            "headlight": (2, "Light"),
-                            "none": (3, "Rest")}
-
-    def notify(self, expected_action):
-        self.parent.expected_action = expected_action
-
-    def follow(self, thefile):
-        thefile.seek(0, 2)
-        while True:
-            line = thefile.readline()
-            if not line:
-                time.sleep(0.1)
-                continue
-            yield line
-
-    @QtCore.pyqtSlot()
-    def run(self):
-        logfile = open(self.logfilename, "r")
-        loglines = self.follow(logfile)
-
-        for line in loglines:
-            if ("p{}_expectedInput".format(self.player_idx) in line):
-                if "none" in line:
-                    expected_action = self.log2actions['none']
-                else:
-                    action = line.split(" ")[-1].strip()
-                    expected_action = self.log2actions[action]
-
-                logging.info(f"Groundtruth: {expected_action[1]}")
-                self.notify(expected_action)
-
-
-class GamePlayer:
-    def __init__(self, player_idx):
-        # Send commands using a separate thread
-        self.thread_game = QtCore.QThreadPool()
-
-    def sendCommand(self, action_idx):
-        ''' Send the command to the game after a delay in a separate thread '''
-        if action_idx not in [None, 3]:
-            command_sender = CommandSenderGame(action_idx)
-            self.thread_game.start(command_sender)
-
-
-class CommandSenderGame(QtCore.QRunnable):
-    def __init__(self, action_idx):
-        super(CommandSenderGame, self).__init__()
-        self.action_idx = action_idx
-
-        # Communication protocol with game
-        self.UDP_IP = "127.0.0.1"
-        self.UDP_PORT = 5555
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP
-        self.commands = {0: "\x0B", 1: "\x0D", 2: "\x0C", 3: ""}
-
-    @QtCore.pyqtSlot()
-    def run(self):
-        # TODO: only random delay when autoplay
-        time.sleep(np.random.random_sample())
-        self.sock.sendto(bytes(self.commands[self.action_idx], "utf-8"),
-                         (self.UDP_IP, self.UDP_PORT))
-
-
-class CommandSenderPort:
-    def __init__(self, port='/dev/ttyACM0'):
-        logging.info(f'Port: {port}')
-        self.serial = serial.Serial(port=port,
-                                    baudrate=115200,
-                                    parity=serial.PARITY_NONE,
-                                    stopbits=serial.STOPBITS_ONE,
-                                    bytesize=serial.EIGHTBITS)
-
-    def sendCommand(self, action_idx):
-        message = str(action_idx)
-        self.serial.write(message.encode())
-
-
-class LSLClient(QtCore.QRunnable):
-    def __init__(self):
-        super().__init__()
-
-        logging.info('Looking for LSL stream...')
-        available_streams = resolve_streams(5)
-
-        if len(available_streams) > 0:
-            self.stream_reader = StreamInlet(available_streams[0],
-                                             max_chunklen=1,
-                                             recover=False)
-            id = self.stream_reader.info().session_id()
-            self.fs = int(self.stream_reader.info().nominal_srate())
-            self.n_channels = int(self.stream_reader.info().channel_count())
-            logging.info(
-                f'Stream {id} found at {self.fs} Hz with {self.n_channels} channels')
-
-            # Fetching channel names
-            ch = self.stream_reader.info().desc().child('channels').first_child()
-            self.ch_names = []
-            for i in range(self.n_channels):
-                self.ch_names.append(ch.child_value('label'))
-                ch = ch.next_sibling()
-            logging.info(f"Channel names: {self.ch_names}")
-        else:
-            logging.error('No stream found !')
-            raise Exception
-
-    def get_data(self):
-        try:
-            # Data is of shape (n_timestamps, n_channels)
-            data, ts = self.stream_reader.pull_chunk()
-        except Exception as e:
-            logging.info(f'{e} - No more data')
-        return np.array(data), np.array(ts)
