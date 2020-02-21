@@ -97,7 +97,7 @@ class EEGDataset:
         y_train = y_train[train_idx]
         X_test = X_test[test_idx, :, :]
         y_test = y_test[test_idx]
-        assert np.unique(y_train) == np.unique(self.labels_list), \
+        assert (np.unique(y_train) == np.unique(self.labels_list)).all(), \
             "Available labels: {}".format(set(y_train))
 
         # Selecting channels
