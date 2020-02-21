@@ -12,8 +12,10 @@ from bokeh.layouts import row, column
 from bokeh.models import ColumnDataSource
 from bokeh.models.widgets import Button, Div, Select, CheckboxButtonGroup
 from pyqtgraph.Qt import QtCore
+from sklearn.metrics import accuracy_score
 
 from feature_extraction_functions.models import load_model
+from feature_extraction_functions.convnets import ShallowConvNet
 from preprocessing_functions.preproc_functions import filtering, rereference
 from preprocessing_functions.preproc_functions import clipping, standardize
 from src.lsl_client import LSLClient
@@ -25,6 +27,7 @@ class PlayerWidget:
     def __init__(self, parent=None):
         self.player_idx = 1
         self.fs = 500
+        self.n_channels = 61
 
         # Game log reader (separate thread)
         self.game_log_reader = None
@@ -55,6 +58,19 @@ class PlayerWidget:
         self.model = None
         self.signal = None
         self._last_pred = (3, "Rest")
+
+    @property
+    def available_models(self):
+        ml_models = glob.glob('./saved_models/*.pkl')
+        dl_models = glob.glob('./saved_models/*.h5')
+        return [''] + ml_models + dl_models
+
+    @property
+    def available_ports(self):
+        if sys.platform == 'linux':
+            return [''] + glob.glob(self.ports)
+        elif sys.platform == 'win32':
+            return [''] + [p.device for p in serial.tools.list_ports.comports()]
 
     @property
     def selected_settings(self):
@@ -101,19 +117,18 @@ class PlayerWidget:
             logging.info(f'Send event: {action}')
 
     @property
-    def get_ports(self):
-        if sys.platform == 'linux':
-            return glob.glob(self.ports)
-        elif sys.platform == 'win32':
-            return [p.device for p in serial.tools.list_ports.comports()]
-
-    @property
     def model_name(self):
         return self.select_model.value
 
     @property
     def channel_idx(self):
         return int(self.select_channel.value.split('-')[0])
+
+    @property
+    def accuracy(self):
+        y_pred = self.chrono_source.data['y_pred']
+        y_true = self.chrono_source.data['y_true']
+        return accuracy_score(y_true, y_pred)
 
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
@@ -148,26 +163,26 @@ class PlayerWidget:
 
     def on_checkbox_settings_change(self, active):
         logging.info(f'Active settings: {active}')
-        self.select_port.options = [''] + self.get_ports
-        self.select_model.options = [''] + glob.glob('./saved_models/*.pkl')
+        self.select_port.options = self.available_ports
+        self.select_model.options = self.available_models
 
         if self.autoplay and self.should_predict:
             logging.info('Deactivate autoplay first !')
-            self.checkbox_settings.active = []
+            self.checkbox_settings.active = [0]
 
-        if self.autoplay and self.game_log_reader is None:
-            logging.info('Launch game first !')
-            self.checkbox_settings.active = []
-
-        if self.should_predict and self.model is None:
-            logging.info('Load pre-trained model first !')
-            self.checkbox_settings.active = []
         elif self.should_predict and self.callback_action_id is None:
+            if self.model is not None:
+                self.create_action_callback()
+            else:
+                logging.info('Load pre-trained model first !')
+                self.checkbox_settings.active = [0]
+
+        elif self.autoplay and self.callback_action_id is None:
             self.create_action_callback()
 
         if self.sending_events and self.port_sender is None:
             logging.info('Select port first !')
-            self.checkbox_settings.active = []
+            self.checkbox_settings.active = [0]
 
     def predict(self):
         assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
@@ -186,7 +201,7 @@ class PlayerWidget:
         if 'Rereference' in self.selected_preproc:
             X = rereference(X)
 
-        # Predict on 3.5s of signal (avoid edge effects of filtering)
+        # Predict on 3.5s of signal (avoid edge effects of filtering) TODO: reshape for DL
         action_idx = self.model.predict(X[np.newaxis, :, 100:1850])[0]
         assert action_idx in [0, 1, 2, 3], \
             'Prediction is not in allowed action space'
@@ -239,13 +254,23 @@ class PlayerWidget:
         # Update information display
         self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
             f'<b>Groundtruth:</b> {self.expected_action} <br>' \
-            f'<b>Prediction:</b> {self._last_pred} <br>'
+            f'<b>Prediction:</b> {self._last_pred} <br>' \
+            f'<b>Accuracy:</b> {self.accuracy} <br>'
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
-        self.model = load_model(new)
-        self.select_model.options = [''] + glob.glob('./saved_models/*.pkl')
-        # TODO: Deep learning case
+        self.select_model.options = self.available_models
+
+        # ML Case
+        if new.split('.')[-1] == 'pkl':
+            self.model = load_model(new)
+
+        # TODO: DL Case: input data should be of shape (self.n_trials, 1, self.n_channels, self.n_samples))
+        elif new.split('.')[-1] == 'h5':
+            self.model = ShallowConvNet(n_channels=self.n_channels,
+                                        n_samples=125)
+            self.model.load_weights(new)
+        logging.info(f'Successfully loaded model: {self.model}')
 
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select new channel {new}')
@@ -323,12 +348,12 @@ class PlayerWidget:
 
         # Select - Choose pre-trained model
         self.select_model = Select(title="Select pre-trained model")
-        self.select_model.options = [''] + glob.glob('./saved_models/*.pkl')
+        self.select_model.options = self.available_models
         self.select_model.on_change('value', self.on_model_change)
 
         # Select - Choose port to send events to
-        self.select_port = Select(title='Select port', options=[''])
-        self.select_port.options += self.get_ports
+        self.select_port = Select(title='Select port')
+        self.select_port.options = self.available_ports
         self.select_port.on_change('value', self.on_select_port)
 
         # Checkbox - Choose player settings
