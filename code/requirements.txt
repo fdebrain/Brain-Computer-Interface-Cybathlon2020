@@ -8,8 +8,8 @@ scipy==1.2.0
 scikit-learn==0.22.1
 scikit-optimize==0.7
 mne==0.18
-# tensorflow==1.15
-# keras==2.1.6
+tensorflow==1.15.2
+keras==2.1.6
 comet_ml==2.0
 resampy==0.2.1
 joblib==0.13.2
