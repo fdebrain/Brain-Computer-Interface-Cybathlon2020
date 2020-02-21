@@ -4,9 +4,10 @@ import glob
 from collections import Counter
 import mne
 from bokeh.io import curdoc
-from bokeh.models.widgets import Div, Select, Button, Slider
+from bokeh.models.widgets import Div, Select, Button, Slider, CheckboxButtonGroup
 from bokeh.layouts import widgetbox, row
 from formatting_functions.formatter import FormatterVHDR
+from src.vhdr_formatter import format_session
 
 
 if sys.platform == 'win32':
@@ -24,9 +25,45 @@ class FormatterWidget:
     def labels_idx(self):
         return [int(s.value) for s in self.select_labels]
 
+    @property
+    def session_idx(self):
+        return self.select_session.value.split('_')[-1]
+
+    @property
+    def available_runs(self):
+        return glob.glob(f'{self.data_path}/Session_{self.session_idx}/vhdr/*.vhdr')
+
+    @property
+    def pre(self):
+        return self.slider_pre_event.value
+
+    @property
+    def post(self):
+        return self.slider_post_event.value
+
+    @property
+    def selected_settings(self):
+        active = self.checkbox_settings.active
+        return [self.checkbox_settings.labels[i] for i in active]
+
+    @property
+    def should_resample(self):
+        return 'Resample to 250Hz' in self.selected_settings
+
+    @property
+    def should_preprocess(self):
+        return 'Preprocess' in self.selected_settings
+
+    def on_extract_change(self, attr, old, new):
+        logging.info(
+            f'Epochs extracted ({self.pre},{self.post}) around marker')
+        self.button_format.button_type = "primary"
+        self.button_format.label = "Format"
+
     def on_session_change(self, attr, old, new):
         logging.info(f'Select session {new}')
-        available_runs = glob.glob(f'{self.data_path}/{new}/vhdr/*.vhdr')
+        logging.info('For sessions <=3: MI starts 4s after marker')
+        logging.info('For sessions > 3: MI starts 7s after marker')
 
         # Reset button state
         self.button_format.button_type = "primary"
@@ -36,7 +73,7 @@ class FormatterWidget:
         fs = None
         events_counter = dict()
         n_channels, n_samples = 0, 0
-        for run in available_runs:
+        for run in self.available_runs:
             raw = mne.io.read_raw_brainvision(vhdr_fname=run,
                                               preload=False,
                                               verbose=False)
@@ -68,29 +105,20 @@ class FormatterWidget:
         curdoc().add_next_tick_callback(self.on_format)
 
     def on_format(self):
-        root = '../Datasets/Pilots/'
-        pilot_idx = 2
-        session_idx = self.select_session.value.split('_')[-1]
-
-        logging.info(self.labels_idx)
-
-        ch_list = None
+        session_path = f'{self.data_path}/Session_{self.session_idx}'
         remove_ch = ['Fp1', 'Fp2']
-        if session_idx == '3':
-            pre = -2.
-            post = 8.
-        else:
-            pre = self.slider_pre_event.value
-            post = self.slider_post_event.value
+        extraction_settings = dict(pre=self.pre, post=self.post,
+                                   marker_encodings=self.labels_idx)
+        preprocess_settings = dict(resample=self.should_resample,
+                                   preprocess=self.should_preprocess,
+                                   remove_ch=remove_ch)
+        save_path = f'{session_path}'
 
-        formatter = FormatterVHDR(root, root, pilot_idx, session_idx,
-                                  self.labels_idx, ch_list, remove_ch,
-                                  pre, post, mode='train', save=True,
-                                  save_folder='formatted_filt_500Hz',
-                                  preprocess=False, resample=False,
-                                  control=False, save_as_trial=False)
         try:
-            formatter.run()
+            format_session(self.available_runs,
+                           save_path,
+                           extraction_settings,
+                           preprocess_settings)
         except Exception as e:
             logging.info(f'Failed to format - {e}')
             self.button_format.button_type = "danger"
@@ -107,15 +135,20 @@ class FormatterWidget:
         self.select_session.on_change('value', self.on_session_change)
 
         self.select_labels = [Select(title=f'Label {id+1}',
-                                     options=[str(i) for i in range(10)],
+                                     options=[str(i) for i in range(30)],
                                      value=str(id+3),
                                      width=80)
                               for id in range(4)]
 
         self.slider_pre_event = Slider(start=-10, end=10, value=-5,
                                        title='Window start (s before event)')
+        self.slider_pre_event.on_change('value', self.on_extract_change)
         self.slider_post_event = Slider(start=-10, end=15, value=11,
                                         title='Window end (s after event)')
+        self.slider_post_event.on_change('value', self.on_extract_change)
+
+        self.checkbox_settings = CheckboxButtonGroup(
+            labels=['Resample to 250Hz', 'Preprocess'])
 
         self.button_format = Button(label="Format", button_type="primary")
         self.button_format.on_click(self.on_format_start)
@@ -125,5 +158,6 @@ class FormatterWidget:
         # Create tab with layout
         layout = widgetbox([self.select_session, row(self.select_labels),
                             self.slider_pre_event, self.slider_post_event,
+                            self.checkbox_settings,
                             self.button_format, self.div_info])
         return layout

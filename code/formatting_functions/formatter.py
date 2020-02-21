@@ -419,9 +419,9 @@ class FormatterVHDR(Formatter):
             raw = mne.io.read_raw_brainvision(filepaths_pilot[sub_session_idx],
                                               preload=True, verbose=False)
             # Resample
-            if self.resample and raw.info['sfreq'] > 500:
-                logging.info(f"Resampling from {raw.info['sfreq']} to 500 Hz")
-                raw.resample(500)
+            if self.resample:
+                logging.info(f"Resampling from {raw.info['sfreq']} to 250 Hz")
+                raw.resample(250)
 
             # Extract events
             events = mne.events_from_annotations(raw, verbose=False)[0]
