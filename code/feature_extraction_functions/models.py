@@ -4,12 +4,11 @@ import pickle
 import time
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from skopt import BayesSearchCV
 from .csp import CSP
 from .fbcsp import FBCSP
 from .riemann import Riemann
-from .convnets import ShallowConvNet
 
 # Reproducibility
 seed_value = 0
@@ -27,7 +26,7 @@ def get_CSP_model():
 
 def get_FBCSP_model():
     model_name = 'FBCSP'
-    search_space = {'classifier__C': (1e-1, 1e3, 'log-uniform')}
+    search_space = {'classifier__C': (1e-2, 1e3, 'log-uniform')}
     model = Pipeline([('feat', FBCSP(fs=500, f_type='butter', m=2, k=-1)),
                       ('classifier', SVC(kernel='rbf', gamma='scale', C=10))])
     return model, search_space, model_name
@@ -45,48 +44,47 @@ def get_Riemann_model():
     return model, search_space, model_name
 
 
-def get_ShallowConv_model():
-    model_name = 'ShallowConv'
-    search_space = {}
-    model = ShallowConvNet()
-    return model, search_space, model_name
-
-
-def get_model(model_str):
+def get_model(model_str, **params):
     if model_str == 'CSP':
         model, search_space, model_name = get_CSP_model()
     elif model_str == 'FBCSP':
         model, search_space, model_name = get_FBCSP_model()
     elif model_str == 'Riemann':
         model, search_space, model_name = get_Riemann_model()
-    elif model_str == 'ShallowConv':
-        model, search_space, model_name = get_ShallowConv_model()
     else:
         raise RuntimeError('Invalid model selection')
     return model, search_space, model_name
 
 
-def train(model_name, X_train, y_train, n_iters=10):
-    # Load model
-    model, search_space, model_name = get_model(model_name)
+def train(model_name, X_train, y_train, mode, n_iters=10):
+    logging.info(f'Training {model_name} model in {mode} mode')
     start_time = time.time()
+    model, search_space, model_name = get_model(model_name)
 
-    # Define split
-    skf = StratifiedKFold(n_splits=5, shuffle=True)
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
     skf = list(skf.split(X_train, y_train))
 
-    # Optimize
-    logging.info('Starting Bayes optimization')
-    gridSearch = BayesSearchCV(model, search_space, cv=skf, n_jobs=1,
-                               refit=True, scoring='accuracy', n_iter=n_iters,
-                               verbose=True)
-    gridSearch.fit(X_train, y_train)
+    if mode == 'optimize':
+        model = BayesSearchCV(model, search_space, cv=skf, n_jobs=1,
+                              refit=True, scoring='accuracy', n_iter=n_iters,
+                              verbose=True, random_state=0)
+        model.fit(X_train, y_train)
 
-    scores = [gridSearch.cv_results_[f'split{k}_test_score'][gridSearch.best_index_]
-              for k in range(gridSearch.n_splits_)]
+        # Extract cv validation scores
+        logging.info(model.cv_results_)
+        cv_mean = model.cv_results_[f'mean_test_score'][model.best_index_]
+        cv_std = model.cv_results_[f'std_test_score'][model.best_index_]
+    elif mode == 'validate':
+        scores = cross_val_score(model, X_train, y_train,
+                                 cv=skf, n_jobs=1,
+                                 scoring='accuracy')
+        logging.info(scores)
+        cv_mean = np.mean(scores)
+        cv_std = np.std(scores)
+        model.fit(X_train, y_train)
+
     training_time = time.time() - start_time
-
-    return gridSearch, np.mean(scores), np.std(scores), training_time
+    return model, cv_mean, cv_std, training_time
 
 
 def save_model(model, save_path, pkl_filename):
