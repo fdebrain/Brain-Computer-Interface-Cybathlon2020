@@ -1,37 +1,39 @@
 import sys
 import logging
-import glob
 from collections import Counter
+from pathlib import Path
+
 import mne
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div, Select, Button, Slider, CheckboxButtonGroup
 from bokeh.layouts import widgetbox, row
-from formatting_functions.formatter import FormatterVHDR
 from src.vhdr_formatter import format_session
-
-
-if sys.platform == 'win32':
-    splitter = '\\'
-else:
-    splitter = '/'
 
 
 class FormatterWidget:
     def __init__(self):
-        self.data_path = '../Datasets/Pilots/Pilot_2'
-        self.available_sessions = glob.glob(f'{self.data_path}/*')
+        self.data_path = Path('../Datasets/Pilots/Pilot_2')
+
+    @property
+    def available_sessions(self):
+        sessions = self.data_path.glob('*')
+        return [''] + [s.parts[-1] for s in sessions]
+
+    @property
+    def selected_session(self):
+        return self.select_session.value
+
+    @property
+    def session_path(self):
+        return self.data_path / self.selected_session
 
     @property
     def labels_idx(self):
         return [int(s.value) for s in self.select_labels]
 
     @property
-    def session_idx(self):
-        return self.select_session.value.split('_')[-1]
-
-    @property
     def available_runs(self):
-        return glob.glob(f'{self.data_path}/Session_{self.session_idx}/vhdr/*.vhdr')
+        return list(self.session_path.glob('vhdr/*.vhdr'))
 
     @property
     def pre(self):
@@ -54,6 +56,11 @@ class FormatterWidget:
     def should_preprocess(self):
         return 'Preprocess' in self.selected_settings
 
+    def update_widget(self):
+
+        self.button_format.button_type = "primary"
+        self.button_format.label = "Format"
+
     def on_extract_change(self, attr, old, new):
         logging.info(
             f'Epochs extracted ({self.pre},{self.post}) around marker')
@@ -66,8 +73,7 @@ class FormatterWidget:
         logging.info('For sessions > 3: MI starts 7s after marker')
 
         # Reset button state
-        self.button_format.button_type = "primary"
-        self.button_format.label = "Format"
+        self.update_widget()
 
         # Get session info
         fs = None
@@ -105,14 +111,13 @@ class FormatterWidget:
         curdoc().add_next_tick_callback(self.on_format)
 
     def on_format(self):
-        session_path = f'{self.data_path}/Session_{self.session_idx}'
         remove_ch = ['Fp1', 'Fp2']
         extraction_settings = dict(pre=self.pre, post=self.post,
                                    marker_encodings=self.labels_idx)
         preprocess_settings = dict(resample=self.should_resample,
                                    preprocess=self.should_preprocess,
                                    remove_ch=remove_ch)
-        save_path = f'{session_path}'
+        save_path = f'{self.session_path}'
 
         try:
             format_session(self.available_runs,
@@ -129,9 +134,8 @@ class FormatterWidget:
         self.button_format.label = "Formatted"
 
     def create_widget(self):
-        self.select_session = Select(title="Session", options=[''])
-        self.select_session.options += [session_path.split(splitter)[-1]
-                                        for session_path in self.available_sessions]
+        self.select_session = Select(title='Session:')
+        self.select_session.options = self.available_sessions
         self.select_session.on_change('value', self.on_session_change)
 
         self.select_labels = [Select(title=f'Label {id+1}',
