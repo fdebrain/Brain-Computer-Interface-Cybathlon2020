@@ -255,7 +255,7 @@ class PlayerWidget:
         self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
             f'<b>Groundtruth:</b> {self.expected_action} <br>' \
             f'<b>Prediction:</b> {self._last_pred} <br>' \
-            f'<b>Accuracy:</b> {self.accuracy} <br>'
+            f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
@@ -288,7 +288,7 @@ class PlayerWidget:
             self.signal = np.zeros((self.lsl_reader.n_channels, 2000))
             if self.lsl_reader is not None:
                 logging.info('Start periodic callback - LSL')
-                self.select_channel.options = [f'{i} - {ch}' for i, ch
+                self.select_channel.options = [f'{i+1} - {ch}' for i, ch
                                                in enumerate(self.lsl_reader.ch_names)]
                 self.create_lsl_callback()
                 self.button_lsl.button_type = 'success'
