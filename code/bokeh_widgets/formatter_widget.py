@@ -1,11 +1,10 @@
-import sys
 import logging
 from collections import Counter
 from pathlib import Path
 
 import mne
 from bokeh.io import curdoc
-from bokeh.models.widgets import Div, Select, Button, Slider, CheckboxButtonGroup
+from bokeh.models import Div, Select, Button, Slider, CheckboxButtonGroup
 from bokeh.layouts import widgetbox, row
 from src.vhdr_formatter import format_session
 
@@ -13,6 +12,7 @@ from src.vhdr_formatter import format_session
 class FormatterWidget:
     def __init__(self):
         self.data_path = Path('../Datasets/Pilots/Pilot_2')
+        self.labels = ['Rest', 'Left', 'Right', 'Headlight']
 
     @property
     def available_sessions(self):
@@ -57,7 +57,6 @@ class FormatterWidget:
         return 'Preprocess' in self.selected_settings
 
     def update_widget(self):
-
         self.button_format.button_type = "primary"
         self.button_format.label = "Format"
 
@@ -138,7 +137,7 @@ class FormatterWidget:
         self.select_session.options = self.available_sessions
         self.select_session.on_change('value', self.on_session_change)
 
-        self.select_labels = [Select(title=f'Label {id+1}',
+        self.select_labels = [Select(title=self.labels[id],
                                      options=[str(i) for i in range(30)],
                                      value=str(id+3),
                                      width=80)
