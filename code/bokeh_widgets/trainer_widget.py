@@ -1,31 +1,28 @@
-import numpy as np
+
 import logging
-import glob
-import os
 import sys
+from pathlib import Path
+
+import numpy as np
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div, Select, Button, CheckboxButtonGroup, CheckboxGroup
 from bokeh.models.widgets import Slider
 from bokeh.layouts import row, column
 from data_loading_functions.data_loader import EEGDataset
-from feature_extraction_functions.models import train, save_model
 
-if sys.platform == 'win32':
-    splitter = '\\'
-else:
-    splitter = '/'
+from src.models import train, save_model
 
 
 class TrainerWidget:
     def __init__(self):
-        self.data_path = '../Datasets/Pilots/Pilot_2'
-        self.available_sessions = glob.glob(f'{self.data_path}/*')
+        self.data_path = Path('../Datasets/Pilots/Pilot_2')
         self.X, self.y = None, None
         self.fs = 500
 
     @property
-    def model_name(self):
-        return self.select_model.value
+    def available_sessions(self):
+        sessions = self.data_path.glob('*')
+        return [''] + [s.name for s in sessions]
 
     @property
     def train_ids(self):
@@ -42,6 +39,10 @@ class TrainerWidget:
     def selected_settings(self):
         active = self.checkbox_settings.active
         return [self.checkbox_settings.labels[i] for i in active]
+
+    @property
+    def model_name(self):
+        return self.select_model.value
 
     @property
     def train_mode(self):
@@ -81,12 +82,13 @@ class TrainerWidget:
         curdoc().add_next_tick_callback(self.on_load)
 
     def on_load(self):
+
+        # TODO: Write cleaner dataloader
         X, y = {}, {}
-        for session_path in self.train_ids:
-            id = session_path.split(splitter)[-1]
+        for id in self.train_ids:
             logging.info(f'Loading {id}')
             self.dataloader_params = {
-                'data_path': f'{session_path}/formatted_filt_{self.fs}Hz/',
+                'data_path': self.data_path / id / f'formatted_filt_{self.fs}Hz',
                 'fs': self.fs,
                 'filt': 'Filter' in self.selected_preproc,
                 'rereferencing': 'Rereference' in self.selected_preproc,
@@ -102,7 +104,7 @@ class TrainerWidget:
             except Exception as e:
                 logging.info(f'Loading data failed - {e}')
                 self.button_train.button_type = 'danger'
-                self.button_train.label = 'Failed'
+                self.button_train.label = 'Training failed'
                 return
 
         # Concatenate all data
@@ -143,17 +145,11 @@ class TrainerWidget:
             else trained_model.best_estimator_
 
         if 'Save' in self.selected_settings:
-            dir_path = './saved_models'
-            if not os.path.isdir(dir_path):
-                logging.info(f'Creating directory {dir_path}')
-                os.mkdir(dir_path)
-
-            logging.info(f'Saving model...')
-            dataset_name = '_'.join([id.split(splitter)[-1]
-                                     for id in self.train_ids])
-            pkl_filename = f"{self.model_name}_{dataset_name}.pkl"
-            save_model(model_to_save, dir_path, pkl_filename)
-            logging.info('Successfully saved model !')
+            save_path = './saved_models'
+            win_len = int(self.fs*(self.end-self.start))
+            dataset_name = '_'.join([id for id in self.train_ids])
+            pkl_filename = f"{self.model_name}_{dataset_name}_{win_len}.pkl"
+            save_model(model_to_save, save_path, pkl_filename)
 
         # Update info
         self.button_train.button_type = 'success'

@@ -1,6 +1,6 @@
-import sys
-import glob
 import logging
+from pathlib import Path
+
 import numpy as np
 import mne
 from bokeh.io import curdoc
@@ -9,20 +9,33 @@ from bokeh.models import ColumnDataSource
 from bokeh.models import Div, Select, Slider, Toggle, Span, Label
 from bokeh.layouts import column, row
 
-if sys.platform == 'win32':
-    splitter = '\\'
-else:
-    splitter = '/'
-
 
 class VisualizerWidget:
     def __init__(self):
-        self.data_path = '../Datasets/Pilots/Pilot_2'
+        self.data_path = Path('../Datasets/Pilots/Pilot_2')
         self.channel2idx = {}
         self._t = 0
         self._data = dict()
         self.source = ColumnDataSource(data=dict(timestamps=[], values=[]))
         self.source_events = ColumnDataSource(data=dict(events=[], actions=[]))
+
+    @property
+    def available_sessions(self):
+        sessions = self.data_path.glob('*')
+        return [''] + [s.name for s in sessions]
+
+    @property
+    def session_path(self):
+        return self.data_path / self.select_session.value
+
+    @property
+    def available_runs(self):
+        runs = self.session_path.glob('vhdr/*.vhdr')
+        return [''] + [r.name for r in runs]
+
+    @property
+    def run_path(self):
+        return self.session_path / 'vhdr' / self.select_run.value
 
     @property
     def fs(self):
@@ -71,21 +84,6 @@ class VisualizerWidget:
                                   actions=roi_events[:, 1])
 
     @property
-    def available_sessions(self):
-        paths = glob.glob(f'{self.data_path}/*')
-        return [''] + [p.split(splitter)[-1] for p in paths]
-
-    @property
-    def selected_session(self):
-        return self.select_session.value
-
-    @property
-    def available_runs(self):
-        session_id = self.selected_session
-        paths = glob.glob(f'{self.data_path}/{session_id}/vhdr/*.vhdr')
-        return [''] + [p.split(splitter)[-1] for p in paths]
-
-    @property
     def channel_name(self):
         return self.select_channel.value
 
@@ -99,16 +97,14 @@ class VisualizerWidget:
 
     def on_run_change(self, attr, old, new):
         logging.info(f'Select visualizer run {new}')
-        session_id = self.selected_session
-        filepath = f'{self.data_path}/{session_id}/vhdr/{new}'
-        raw = mne.io.read_raw_brainvision(vhdr_fname=filepath,
+        raw = mne.io.read_raw_brainvision(vhdr_fname=self.run_path,
                                           preload=True,
                                           verbose=False)
 
         # Get channels
         available_channels = raw.ch_names
         self.select_channel.options = [''] + available_channels
-        self.channel2idx = {c: i for i, c in enumerate(available_channels)}
+        self.channel2idx = {c: i+1 for i, c in enumerate(available_channels)}
 
         # Get events
         events = mne.events_from_annotations(raw, verbose=False)[0]
