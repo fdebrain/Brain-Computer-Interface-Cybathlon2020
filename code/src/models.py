@@ -1,14 +1,18 @@
 import logging
-import numpy as np
+import os
 import pickle
 import time
+
+import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from skopt import BayesSearchCV
-from .csp import CSP
-from .fbcsp import FBCSP
-from .riemann import Riemann
+
+from feature_extraction_functions.csp import CSP
+from feature_extraction_functions.fbcsp import FBCSP
+from feature_extraction_functions.riemann import Riemann
+from feature_extraction_functions.convnets import ShallowConvNet
 
 # Reproducibility
 seed_value = 0
@@ -88,11 +92,41 @@ def train(model_name, X_train, y_train, mode, n_iters=10):
 
 
 def save_model(model, save_path, pkl_filename):
+    if not os.path.isdir(save_path):
+        logging.info(f'Creating directory {save_path}')
+        os.mkdir(save_path)
+
+    logging.info(f'Saving model {pkl_filename}')
     model_pkl = open(f'{save_path}/{pkl_filename}', 'wb')
     pickle.dump(model, model_pkl)
     model_pkl.close()
 
+    logging.info('Successfully saved model !')
+
 
 def load_model(model_path):
-    unpickle = open(model_path, 'rb')
-    return pickle.load(unpickle)
+    """Load pre-trained model {FBCSP, Riemann, ShallowConvNet)
+
+    Arguments:
+        model_path {Path} -- Model path to load
+
+    Raises:
+        ValueError: Model suffix not recognised
+
+    Returns:
+        object -- Model
+    """
+    logging.info(f'Loading model {model_path}')
+
+    if model_path.suffix == '.pkl':
+        unpickle = open(model_path, 'rb')
+        model = pickle.load(unpickle)
+    elif model_path.suffix == '.h5':
+        model = ShallowConvNet(n_channels=61,
+                               n_samples=125)
+        model.load_weights(model_path)
+    else:
+        raise ValueError('Model format not recognized !')
+
+    logging.info(f'Successfully loaded model: {model}')
+    return model
