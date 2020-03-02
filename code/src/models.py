@@ -2,6 +2,8 @@ import logging
 import os
 import pickle
 import time
+import json
+from collections import Counter
 
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -24,7 +26,6 @@ def get_CSP_model():
     search_space = {'classifier__C': (1e-3, 1e3, 'log-uniform')}
     model = Pipeline(steps=[('feat', CSP()),
                             ('classifier', SVC())])
-    # ('classifier', SVC(kernel='rbf', gamma='scale', C=10))])
     return model, search_space, model_name
 
 
@@ -61,17 +62,18 @@ def get_model(model_str, **params):
 
 
 def train(model_name, X_train, y_train, mode, n_iters=10):
-    logging.info(f'Training {model_name} model in {mode} mode')
+    logging.info(f'Training {model_name} model in {mode} mode '
+                 f'using {len(X_train)} trials')
     start_time = time.time()
     model, search_space, model_name = get_model(model_name)
 
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+    skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
     skf = list(skf.split(X_train, y_train))
 
     if mode == 'optimize':
         model = BayesSearchCV(model, search_space, cv=skf, n_jobs=1,
                               refit=True, scoring='accuracy', n_iter=n_iters,
-                              verbose=True, random_state=0)
+                              verbose=True, random_state=0, )
         model.fit(X_train, y_train)
 
         # Extract cv validation scores
@@ -91,17 +93,28 @@ def train(model_name, X_train, y_train, mode, n_iters=10):
     return model, cv_mean, cv_std, training_time
 
 
-def save_model(model, save_path, pkl_filename):
-    if not os.path.isdir(save_path):
-        logging.info(f'Creating directory {save_path}')
-        os.mkdir(save_path)
+def predict(X, model, is_convnet):
+    """Return prediction of a trained model given input EEG data.
 
-    logging.info(f'Saving model {pkl_filename}')
-    model_pkl = open(f'{save_path}/{pkl_filename}', 'wb')
-    pickle.dump(model, model_pkl)
-    model_pkl.close()
+    Arguments:
+        X {np.array} -- EEG array of shape (n_trials, n_channels, n_samples)
+        model {object} -- Trained model
+        is_convnet {bool} -- Model is convNet
 
-    logging.info('Successfully saved model !')
+    Returns:
+        np.array -- Array of predictions
+    """
+    y_preds = model.predict(X)
+
+    # ConvNet case - Convert probabilities to int
+    if is_convnet:
+        logging.info(y_preds)
+        y_preds = np.argmax(y_preds, axis=1)
+
+    y_pred = Counter(y_preds).most_common()[0][0]
+
+    # TODO: If less than n_thresh occurences, return 'Rest' action
+    return y_pred
 
 
 def load_model(model_path):
@@ -123,10 +136,33 @@ def load_model(model_path):
         model = pickle.load(unpickle)
     elif model_path.suffix == '.h5':
         model = ShallowConvNet(n_channels=61,
-                               n_samples=125)
+                               n_samples=250)
         model.load_weights(model_path)
     else:
         raise ValueError('Model format not recognized !')
 
     logging.info(f'Successfully loaded model: {model}')
     return model
+
+
+def save_model(model, save_path, filename):
+    """Save model as .pkl file.
+
+    Arguments:
+        model {object} -- Fitted model
+        save_path {Path} -- Path of save directory
+        filename {str} -- Name of file to save
+    """
+    if not os.path.isdir(save_path):
+        logging.info(f'Creating directory {save_path}')
+        os.mkdir(save_path)
+
+    logging.info(f'Saving model {filename}.pkl')
+    with open(save_path / f'{filename}.pkl', 'wb') as f:
+        pickle.dump(model, f)
+    logging.info('Successfully saved model !')
+
+
+def save_json(model_info, save_path, filename):
+    with open(save_path / f'{filename}.json', 'w', encoding='utf-8') as f:
+        json.dump(model_info, f, ensure_ascii=False, indent=4)
