@@ -7,10 +7,13 @@ import mne
 from sklearn.metrics import accuracy_score
 from bokeh.io import curdoc
 from bokeh.plotting import figure
-from bokeh.models import Div, Select, Button, Slider, ColumnDataSource
+from bokeh.models import Div, Select, Button, Slider
+from bokeh.models import ColumnDataSource, CheckboxButtonGroup
 from bokeh.layouts import row, column
 
-from src.models import load_model
+from src.vhdr_formatter import load_vhdr
+from src.models import load_model, predict
+from src.dataloader import cropping, preprocessing
 
 
 class TestWidget:
@@ -21,7 +24,6 @@ class TestWidget:
         self.gd2pred = {2: 0, 4: 1, 6: 2, 8: 3}
         self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
         self._data = {}
-        self.win_len = int(500 * 4)
         self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
                                                    y_pred=[]))
 
@@ -54,6 +56,35 @@ class TestWidget:
         return self.models_path / self.select_model.value
 
     @property
+    def selected_preproc(self):
+        active = self.checkbox_preproc.active
+        return [self.checkbox_preproc.labels[i] for i in active]
+
+    @property
+    def should_reref(self):
+        return 'Rereference' in self.selected_preproc
+
+    @property
+    def should_filter(self):
+        return 'Filter' in self.selected_preproc
+
+    @property
+    def should_standardize(self):
+        return 'Standarsize' in self.selected_preproc
+
+    @property
+    def should_crop(self):
+        return 'Crop' in self.selected_preproc
+
+    @property
+    def is_convnet(self):
+        return self.select_model.value.split('.')[-1] == 'h5'
+
+    @property
+    def win_len(self):
+        return int(self.fs*self.slider_win_len.value)
+
+    @property
     def accuracy(self):
         y_pred = self.chrono_source.data['y_pred']
         y_true = self.chrono_source.data['y_true']
@@ -67,21 +98,9 @@ class TestWidget:
         logging.info(f'Select run {new}')
         self.update_widgets()
 
-        raw = mne.io.read_raw_brainvision(vhdr_fname=self.run_path,
-                                          preload=True, verbose=False)
-
-        # Get info
+        raw = load_vhdr(self.run_path, resample=False,
+                        preprocess=True, remove_ch=['Fp1', 'Fp2'])
         self.fs = raw.info['sfreq']
-
-        # Drop channels
-        remove_ch = ['Fp1', 'Fp2']
-        logging.info(f'Removing the following channels: {remove_ch}')
-        raw.drop_channels(remove_ch)
-
-        # Preprocessing
-        logging.info('Filtering')
-        raw.notch_filter(freqs=[50, 100])
-        raw = raw.filter(l_freq=0.5, h_freq=100)
 
         # Get channels
         available_channels = raw.ch_names
@@ -126,15 +145,26 @@ class TestWidget:
             # Extract epoch data
             end_idx = np.argmin(abs(ts - self._data['ts']))
             start_idx = end_idx - self.win_len
-            epoch = self._data['values'][:, start_idx:end_idx]
+            epoch = self._data['values'][np.newaxis, :, start_idx:end_idx]
 
-            # Predict
-            y_pred = self.model.predict(epoch[np.newaxis, :, :])[0]
+            # Cropping
+            epochs, _ = cropping(epoch, [groundtruth], self.fs,
+                                 n_crops=10, crop_len=0.5)
+
+            # Preprocessing
+            epochs = preprocessing(epochs, self.fs,
+                                   rereference=self.should_reref,
+                                   filt=self.should_filter,
+                                   standardize=self.should_standardize,
+                                   dl_shape=self.is_convnet)
+
+            y_pred = predict(epochs, self.model, self.is_convnet)
 
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.gd2pred[groundtruth]],
                                            y_pred=[y_pred]))
 
+        # TODO: Metrics recall/accuracy for each MI task + matrix
         self.div_info.text += f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
 
         self.button_validate.label = 'Finished'
@@ -160,6 +190,15 @@ class TestWidget:
         self.select_model.options = self.available_models
         self.select_model.on_change('value', self.on_model_change)
 
+        self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
+        self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
+                                                            'Standardize',
+                                                            'Rereference',
+                                                            'Crop'])
+
+        self.slider_win_len = Slider(start=0.5, end=4, value=1,
+                                     step=0.25, title='Win len (s)')
+
         self.button_validate = Button(label='Validate',
                                       button_type='primary')
         self.button_validate.on_click(self.on_validate_start)
@@ -171,13 +210,19 @@ class TestWidget:
                                       y_axis_label='Action',
                                       plot_height=300,
                                       plot_width=800)
+        self.plot_chronogram.legend.background_fill_alpha = 0.8
+        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
+        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
         self.plot_chronogram.line(x='ts', y='y_true', color='blue',
-                                  source=self.chrono_source)
+                                  source=self.chrono_source,
+                                  legend_label='Groundtruth')
         self.plot_chronogram.cross(x='ts', y='y_pred', color='red',
-                                   source=self.chrono_source)
+                                   source=self.chrono_source,
+                                   legend_label='Prediction')
 
         column1 = column(self.select_session, self.select_run,
-                         self.select_model, self.button_validate,
+                         self.select_model, self.div_preproc,
+                         self.checkbox_preproc, self.button_validate,
                          self.div_info)
         column2 = column(self.plot_chronogram)
 

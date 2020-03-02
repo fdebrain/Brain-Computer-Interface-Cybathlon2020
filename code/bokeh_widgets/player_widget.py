@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import traceback
 
 import numpy as np
 import serial
@@ -14,8 +15,7 @@ from bokeh.models.widgets import Button, Div, Select, CheckboxButtonGroup
 from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
-from preprocessing_functions.preproc_functions import filtering, rereference
-from preprocessing_functions.preproc_functions import clipping, standardize
+from src.dataloader import preprocessing
 from src.models import load_model
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
@@ -45,7 +45,7 @@ class PlayerWidget:
         self.callback_action_id = None
         self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
                                                    y_pred=[]))
-        self.idx2action = {0: "Left", 1: "Right", 2: "Light", 3: "Rest"}
+        self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
 
         # LSL stream reader
         self.parent = parent
@@ -78,11 +78,6 @@ class PlayerWidget:
     def selected_settings(self):
         active = self.checkbox_settings.active
         return [self.checkbox_settings.labels[i] for i in active]
-
-    @property
-    def selected_preproc(self):
-        active = self.checkbox_preproc.active
-        return [self.checkbox_preproc.labels[i] for i in active]
 
     @property
     def model_path(self):
@@ -125,6 +120,27 @@ class PlayerWidget:
     @property
     def model_name(self):
         return self.select_model.value
+
+    @property
+    def selected_preproc(self):
+        active = self.checkbox_preproc.active
+        return [self.checkbox_preproc.labels[i] for i in active]
+
+    @property
+    def should_reref(self):
+        return 'Rereference' in self.selected_preproc
+
+    @property
+    def should_standardize(self):
+        return 'Standardize' in self.selected_preproc
+
+    @property
+    def should_crop(self):
+        return 'Crop' in self.selected_preproc
+
+    @property
+    def is_convnet(self):
+        return self.select_model.value.split('.')[-1] == 'h5'
 
     @property
     def channel_idx(self):
@@ -195,25 +211,21 @@ class PlayerWidget:
         assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
         X = np.copy(self.signal)
 
-        # Removing FP1 & FP2
+        # Removing FP1 & FP2 TODO: Don't hardcode
         X = np.delete(X, [0, 30], axis=0)
 
+        # Selecting last 1s of signal
+        X = X[:, :, -self.fs:]
+
         # Preprocessing
-        if 'Filter' in self.selected_preproc:
-            X = filtering(X, f_low=0.5, f_high=38,
-                          fs=self.fs, f_order=3)
+        X = preprocessing(X,
+                          rereference=self.should_reref,
+                          standardize=self.should_standardize,
+                          crop=self.should_crop,
+                          dl_shape=self.is_convnet)
 
-        if 'Standardize' in self.selected_preproc:
-            X = clipping(X, 6)
-            X = standardize(X)
-
-        if 'Rereference' in self.selected_preproc:
-            X = rereference(X)
-
-        # Predict on 3.5s of signal (avoid edge effects of filtering)
-        # TODO: reshape for DL + extract window length from model name
-
-        action_idx = self.model.predict(X[np.newaxis, :, 100:1850])[0]
+        # TODO: Average 10 predictions using 1s of signal
+        action_idx = self.model.predict(X)[0]
         assert action_idx in [0, 1, 2, 3], \
             'Prediction is not in allowed action space'
         return action_idx
@@ -253,7 +265,7 @@ class PlayerWidget:
             logging.info(f'Sending: {action_idx}')
             self.game_player.sendCommand(action_idx)
 
-        self._last_pred = (action_idx, self.idx2action[action_idx])
+        self._last_pred = (action_idx, self.pred2encoding[action_idx])
 
         # Update chronogram source (if race started)
         if self.game_start_time is not None:
@@ -294,8 +306,8 @@ class PlayerWidget:
                 self.create_lsl_callback()
                 self.button_lsl.label = 'Reading LSL stream'
                 self.button_lsl.button_type = 'success'
-        except Exception as e:
-            logging.info(e)
+        except Exception:
+            logging.info(f'No LSL stream - {traceback.format_exc()}')
             self.lsl_reader = None
 
     def create_lsl_callback(self):
@@ -326,14 +338,15 @@ class PlayerWidget:
                 ch = self.channel_idx
                 self.channel_source.stream(dict(ts=ts,
                                                 data=data[ch, :]),
-                                           rollover=1000)
+                                           rollover=int(2*self.fs))
                 # Update signal
                 chunk_size = data.shape[-1]
                 self.signal = np.roll(self.signal, -chunk_size, axis=-1)
                 self.signal[:, -chunk_size:] = data
 
-        except Exception as e:
-            logging.info(f'Ending periodic callback - {e}')
+        except Exception:
+            logging.info(
+                f'Ending periodic callback - {traceback.format_exc()}')
             self.remove_lsl_callback()
             self.remove_action_callback()
             self.button_lsl.label = 'No LSL stream'
@@ -371,7 +384,8 @@ class PlayerWidget:
         self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
         self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
                                                             'Standardize',
-                                                            'Rereference'])
+                                                            'Rereference',
+                                                            'Crop'])
 
         # Select - Channel to visualize
         self.select_channel = Select(title='Select channel', value='1 - Fp1')
@@ -391,10 +405,15 @@ class PlayerWidget:
                                       y_axis_label='Action',
                                       plot_height=300,
                                       plot_width=800)
+        self.plot_chronogram.legend.background_fill_alpha = 0.8
+        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
+        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
         self.plot_chronogram.line(x='ts', y='y_true', color='blue',
-                                  source=self.chrono_source)
+                                  source=self.chrono_source,
+                                  legend_label='Groundtruth')
         self.plot_chronogram.cross(x='ts', y='y_pred', color='red',
-                                   source=self.chrono_source)
+                                   source=self.chrono_source,
+                                   legend_label='Prediction')
 
         # Div - Display useful information
         self.div_info = Div()

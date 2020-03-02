@@ -1,28 +1,28 @@
 
 import logging
-import sys
 from pathlib import Path
+import traceback
 
 import numpy as np
 from bokeh.io import curdoc
-from bokeh.models.widgets import Div, Select, Button, CheckboxButtonGroup, CheckboxGroup
-from bokeh.models.widgets import Slider
+from bokeh.models import Div, Select, Button, Slider
+from bokeh.models import CheckboxButtonGroup, CheckboxGroup
 from bokeh.layouts import row, column
-from data_loading_functions.data_loader import EEGDataset
 
-from src.models import train, save_model
+from src.dataloader import load_session
+from src.dataloader import cropping, preprocessing
+from src.models import train, save_model, save_json
 
 
 class TrainerWidget:
     def __init__(self):
         self.data_path = Path('../Datasets/Pilots/Pilot_2')
-        self.X, self.y = None, None
-        self.fs = 500
+        self.save_path = Path('./saved_models')
 
     @property
     def available_sessions(self):
         sessions = self.data_path.glob('*')
-        return [''] + [s.name for s in sessions]
+        return [s.name for s in sessions]
 
     @property
     def train_ids(self):
@@ -34,6 +34,22 @@ class TrainerWidget:
     def selected_preproc(self):
         active = self.checkbox_preproc.active
         return [self.checkbox_preproc.labels[i] for i in active]
+
+    @property
+    def should_reref(self):
+        return 'Rereference' in self.selected_preproc
+
+    @property
+    def should_filter(self):
+        return 'Filter' in self.selected_preproc
+
+    @property
+    def should_standardize(self):
+        return 'Standarsize' in self.selected_preproc
+
+    @property
+    def should_crop(self):
+        return 'Crop' in self.selected_preproc
 
     @property
     def selected_settings(self):
@@ -82,27 +98,19 @@ class TrainerWidget:
         curdoc().add_next_tick_callback(self.on_load)
 
     def on_load(self):
-
-        # TODO: Write cleaner dataloader
         X, y = {}, {}
         for id in self.train_ids:
             logging.info(f'Loading {id}')
-            self.dataloader_params = {
-                'data_path': self.data_path / id / f'formatted_filt_{self.fs}Hz',
-                'fs': self.fs,
-                'filt': 'Filter' in self.selected_preproc,
-                'rereferencing': 'Rereference' in self.selected_preproc,
-                'standardization': 'Standardize' in self.selected_preproc,
-                'valid_ratio': 0.0,
-                'load_test': False,
-                'balanced': True}
-            dataset = EEGDataset(pilot_idx=1, **self.dataloader_params)
 
             try:
-                X[id], y[id], _, _, _, _ = dataset.load_dataset()
-                logging.info(f'{X[id].shape} - {y[id].shape}')
-            except Exception as e:
-                logging.info(f'Loading data failed - {e}')
+                session_path = self.data_path / \
+                    id / f'formatted_filt_500Hz'
+                filepath = session_path / 'train/train1.npz'
+                X[id], y[id], self.fs, self.ch_names = load_session(filepath,
+                                                                    self.start,
+                                                                    self.end)
+            except Exception:
+                logging.info(f'Loading data failed - {traceback.format_exc()}')
                 self.button_train.button_type = 'danger'
                 self.button_train.label = 'Training failed'
                 return
@@ -110,6 +118,17 @@ class TrainerWidget:
         # Concatenate all data
         self.X = np.vstack([X[id] for id in X.keys()])
         self.y = np.hstack([y[id] for id in y.keys()]).flatten()
+        logging.info(f'Shape: X {self.X.shape} - y {self.y.shape}')
+
+        # Cropping
+        self.X, self.y = cropping(self.X, self.y, self.fs,
+                                  n_crops=8, crop_len=0.5)
+
+        # Preprocessing
+        self.X = preprocessing(self.X, self.fs,
+                               rereference=self.should_reref,
+                               filt=self.should_filter,
+                               standardize=self.should_standardize)
 
         # Update session info
         self.div_info.text = f'<b>Sampling frequency:</b> {self.fs} Hz<br>' \
@@ -122,17 +141,13 @@ class TrainerWidget:
         curdoc().add_next_tick_callback(self.on_train)
 
     def on_train(self):
-        logging.info(f'Extracting MI: [{self.start} to {self.end}]s')
-        self.X = self.X[:, :, int(self.start*self.fs): int(self.end*self.fs)]
-
-        # Instanciate and train model
         try:
             trained_model, cv_mean, cv_std, train_time = train(self.model_name,
                                                                self.X, self.y,
                                                                self.train_mode,
                                                                n_iters=1)
-        except Exception as e:
-            logging.info(f'Training failed - {e}')
+        except Exception:
+            logging.info(f'Training failed - {traceback.format_exc()}')
             self.button_train.button_type = 'danger'
             self.button_train.label = 'Failed'
             return
@@ -145,11 +160,20 @@ class TrainerWidget:
             else trained_model.best_estimator_
 
         if 'Save' in self.selected_settings:
-            save_path = './saved_models'
-            win_len = int(self.fs*(self.end-self.start))
             dataset_name = '_'.join([id for id in self.train_ids])
-            pkl_filename = f"{self.model_name}_{dataset_name}_{win_len}.pkl"
-            save_model(model_to_save, save_path, pkl_filename)
+            filename = f'{self.model_name}_{dataset_name}'
+            save_model(model_to_save, self.save_path, filename)
+
+            model_info = {"model": self.model_name,
+                          "file": filename,
+                          "train_ids": self.train_ids,
+                          "fs": int(self.fs),
+                          "shape": self.X.shape,
+                          "preproc": self.selected_preproc,
+                          "cv_mean": cv_mean,
+                          "cv_std": cv_std,
+                          "train_time": train_time}
+            save_json(model_info, self.save_path, filename)
 
         # Update info
         self.button_train.button_type = 'success'
@@ -169,12 +193,15 @@ class TrainerWidget:
         self.select_model.options = ['', 'CSP', 'FBCSP', 'Riemann']
 
         # Slider - Select ROI start (in s after start of epoch)
-        self.slider_roi_start = Slider(start=0, end=6, value=2.5,
+        self.slider_roi_start = Slider(start=0, end=6, value=2,
                                        step=0.25, title='ROI start (s)')
 
         # Slider - Select ROI end (in s after start of epoch)
         self.slider_roi_end = Slider(start=0, end=6, value=6,
                                      step=0.25, title='ROI end (s)')
+
+        self.checkbox_settings = CheckboxButtonGroup(labels=['Save',
+                                                             'Optimize'])
 
         # Slider - Number of iterations if optimization
         self.slider_n_iters = Slider(start=1, end=50, value=1,
@@ -185,10 +212,7 @@ class TrainerWidget:
         self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
                                                             'Standardize',
                                                             'Rereference',
-                                                            'Cropping'])
-
-        self.checkbox_settings = CheckboxButtonGroup(
-            labels=['Save', 'Optimize'])
+                                                            'Crop'])
 
         self.button_train = Button(label='Train', button_type='primary')
         self.button_train.on_click(self.on_train_start)
