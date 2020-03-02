@@ -1,6 +1,7 @@
 import logging
 from collections import Counter
 from pathlib import Path
+import traceback
 
 import mne
 from bokeh.io import curdoc
@@ -28,8 +29,14 @@ class FormatterWidget:
         return self.data_path / self.selected_session
 
     @property
-    def labels_idx(self):
-        return [int(s.value) for s in self.select_labels]
+    def labels_encoding(self):
+        markers = [int(s.value) for s in self.select_labels]
+        return dict(zip(markers, [0, 1, 2, 3]))
+
+    @property
+    def labels_decoding(self):
+        markers = [int(s.value) for s in self.select_labels]
+        return dict(zip(self.labels, markers))
 
     @property
     def available_runs(self):
@@ -112,7 +119,7 @@ class FormatterWidget:
     def on_format(self):
         remove_ch = ['Fp1', 'Fp2']
         extraction_settings = dict(pre=self.pre, post=self.post,
-                                   marker_encodings=self.labels_idx)
+                                   marker_decodings=self.labels_decoding)
         preprocess_settings = dict(resample=self.should_resample,
                                    preprocess=self.should_preprocess,
                                    remove_ch=remove_ch)
@@ -122,9 +129,10 @@ class FormatterWidget:
             format_session(self.available_runs,
                            save_path,
                            extraction_settings,
-                           preprocess_settings)
-        except Exception as e:
-            logging.info(f'Failed to format - {e}')
+                           preprocess_settings,
+                           self.labels_encoding)
+        except Exception:
+            logging.info(f'Failed to format - {traceback.format_exc()}')
             self.button_format.button_type = "danger"
             self.button_format.label = "Failed"
             return
@@ -143,10 +151,10 @@ class FormatterWidget:
                                      width=80)
                               for id in range(4)]
 
-        self.slider_pre_event = Slider(start=-10, end=10, value=-5,
+        self.slider_pre_event = Slider(start=-10, end=10, value=2,
                                        title='Window start (s before event)')
         self.slider_pre_event.on_change('value', self.on_extract_change)
-        self.slider_post_event = Slider(start=-10, end=15, value=11,
+        self.slider_post_event = Slider(start=-10, end=15, value=4,
                                         title='Window end (s after event)')
         self.slider_post_event.on_change('value', self.on_extract_change)
 
