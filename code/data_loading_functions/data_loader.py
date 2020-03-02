@@ -2,8 +2,8 @@ import numpy as np
 import logging
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-from preprocessing_functions.preproc_functions import rereference, filtering
-from preprocessing_functions.preproc_functions import standardize, clipping
+from preprocessing_functions.preproc_functions import rereferencing, filtering
+from preprocessing_functions.preproc_functions import standardizing, clipping
 
 
 class EEGDataset:
@@ -119,8 +119,8 @@ class EEGDataset:
         # Preprocessing - Re-referencing (mean over channel axis should be 0 for each timestamp)
         if self.rereferencing:
             logging.info("Re-referencing...")
-            X_train = rereference(X_train)
-            X_test = rereference(X_test)
+            X_train = rereferencing(X_train)
+            X_test = rereferencing(X_test)
 
             # Sanity check
             assert np.isclose(
@@ -142,8 +142,8 @@ class EEGDataset:
             logging.info("Clipping & standardizing...")
             X_train = clipping(X_train, 6)
             X_test = clipping(X_test, 6)
-            X_train = standardize(X_train)
-            X_test = standardize(X_test)
+            X_train = standardizing(X_train)
+            X_test = standardizing(X_test)
 
             # Sanity check
             assert np.isclose(np.mean(np.mean(np.mean(X_train, axis=-1),
@@ -207,8 +207,8 @@ def cropping(X, y, fs=250, n_crops=10, crop_len=2., shuffled=False):
                                             for crop_idx in range(n_crops)], axis=0)
                                   for trial_idx in range(n_trials)], axis=0)
 
-        y_crops = np.concatenate(
-            [[y[trial_idx]]*n_crops for trial_idx in range(y.shape[0])])
+        y_crops = np.concatenate([[y[trial_idx]] * n_crops
+                                  for trial_idx in range(y.shape[0])])
     else:
         # print('No cropping.')
         X_crops, y_crops = X, y
@@ -222,4 +222,4 @@ def cropping(X, y, fs=250, n_crops=10, crop_len=2., shuffled=False):
         trial2crops_idx[trial_idx] = np.where(np.logical_and(
             idx >= trial_idx*n_crops, idx < (trial_idx+1)*n_crops))[0]
 
-    return X_crops, y_crops, trial2crops_idx
+    return np.array(X_crops), np.array(y_crops), trial2crops_idx
