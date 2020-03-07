@@ -1,19 +1,20 @@
-from preprocessing_functions.preproc_functions import filtering
-import numpy as np
 import glob
 import os
-import scipy.io
-import scipy.signal
 import re
-import mne
-from joblib import Parallel, delayed
-import resampy
-from copy import deepcopy
 import h5py
 import logging
+from copy import deepcopy
+from joblib import Parallel, delayed
+# import sys
+# sys.path.append('..')
 
-import sys
-sys.path.append('..')
+import numpy as np
+import scipy.io
+import scipy.signal
+import mne
+import resampy
+
+from ..preprocessing import filtering
 
 
 class Formatter:

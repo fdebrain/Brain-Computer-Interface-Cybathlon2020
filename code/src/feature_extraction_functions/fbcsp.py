@@ -1,8 +1,9 @@
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-from preprocessing_functions.preproc_functions import filtering
-from feature_extraction_functions.csp import CSP
 from sklearn.feature_selection import SelectKBest, mutual_info_classif
+
+from ..preprocessing import filtering
+from .csp import CSP
 
 
 class FBCSP(BaseEstimator, TransformerMixin):

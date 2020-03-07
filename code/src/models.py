@@ -11,10 +11,10 @@ from sklearn.svm import SVC
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from skopt import BayesSearchCV
 
-from feature_extraction_functions.csp import CSP
-from feature_extraction_functions.fbcsp import FBCSP
-from feature_extraction_functions.riemann import Riemann
-from feature_extraction_functions.convnets import ShallowConvNet
+from .feature_extraction_functions.csp import CSP
+from .feature_extraction_functions.fbcsp import FBCSP
+from .feature_extraction_functions.riemann import Riemann
+from .feature_extraction_functions.convnets import ShallowConvNet
 
 # Reproducibility
 seed_value = 0
@@ -71,9 +71,9 @@ def train(model_name, X_train, y_train, mode, n_iters=10):
     skf = list(skf.split(X_train, y_train))
 
     if mode == 'optimize':
-        model = BayesSearchCV(model, search_space, cv=skf, n_jobs=1,
+        model = BayesSearchCV(model, search_space, cv=skf, n_jobs=-1,
                               refit=True, scoring='accuracy', n_iter=n_iters,
-                              verbose=True, random_state=0, )
+                              verbose=True, random_state=0)
         model.fit(X_train, y_train)
 
         # Extract cv validation scores
@@ -82,7 +82,7 @@ def train(model_name, X_train, y_train, mode, n_iters=10):
         cv_std = model.cv_results_[f'std_test_score'][model.best_index_]
     elif mode == 'validate':
         scores = cross_val_score(model, X_train, y_train,
-                                 cv=skf, n_jobs=1,
+                                 cv=skf, n_jobs=-1,
                                  scoring='accuracy')
         logging.info(scores)
         cv_mean = np.mean(scores)

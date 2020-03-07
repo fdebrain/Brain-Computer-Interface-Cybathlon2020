@@ -3,10 +3,7 @@ from collections import Counter
 
 import numpy as np
 
-from preprocessing_functions.preproc_functions import (rereferencing,
-                                                       filtering,
-                                                       clipping,
-                                                       standardizing)
+from .preprocessing import (rereferencing, filtering, clipping, standardizing)
 
 
 def load_session(session_path, start=None, end=None):

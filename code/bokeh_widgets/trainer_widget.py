@@ -9,8 +9,7 @@ from bokeh.models import Div, Select, Button, Slider
 from bokeh.models import CheckboxButtonGroup, CheckboxGroup
 from bokeh.layouts import row, column
 
-from src.dataloader import load_session
-from src.dataloader import cropping, preprocessing
+from src.dataloader import load_session, cropping, preprocessing
 from src.models import train, save_model, save_json
 
 
@@ -121,8 +120,9 @@ class TrainerWidget:
         logging.info(f'Shape: X {self.X.shape} - y {self.y.shape}')
 
         # Cropping
-        self.X, self.y = cropping(self.X, self.y, self.fs,
-                                  n_crops=8, crop_len=0.5)
+        if self.should_crop:
+            self.X, self.y = cropping(self.X, self.y, self.fs,
+                                      n_crops=8, crop_len=0.5)
 
         # Preprocessing
         self.X = preprocessing(self.X, self.fs,
@@ -145,7 +145,7 @@ class TrainerWidget:
             trained_model, cv_mean, cv_std, train_time = train(self.model_name,
                                                                self.X, self.y,
                                                                self.train_mode,
-                                                               n_iters=1)
+                                                               n_iters=self.slider_n_iters)
         except Exception:
             logging.info(f'Training failed - {traceback.format_exc()}')
             self.button_train.button_type = 'danger'
@@ -164,15 +164,15 @@ class TrainerWidget:
             filename = f'{self.model_name}_{dataset_name}'
             save_model(model_to_save, self.save_path, filename)
 
-            model_info = {"model": self.model_name,
-                          "file": filename,
-                          "train_ids": self.train_ids,
+            model_info = {"Model name": self.model_name,
+                          "Model file": filename,
+                          "Train ids": self.train_ids,
                           "fs": int(self.fs),
-                          "shape": self.X.shape,
-                          "preproc": self.selected_preproc,
-                          "cv_mean": cv_mean,
-                          "cv_std": cv_std,
-                          "train_time": train_time}
+                          "Shape": self.X.shape,
+                          "Preprocessing": self.selected_preproc,
+                          "Model pipeline": {k: str(v) for k, v in model_to_save.steps},
+                          "CV RMSE": f'{cv_mean:.3f}+-{cv_std:.3f}',
+                          "Train time": train_time}
             save_json(model_info, self.save_path, filename)
 
         # Update info

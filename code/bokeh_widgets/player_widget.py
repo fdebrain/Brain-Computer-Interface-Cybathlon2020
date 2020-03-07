@@ -405,15 +405,15 @@ class PlayerWidget:
                                       y_axis_label='Action',
                                       plot_height=300,
                                       plot_width=800)
-        self.plot_chronogram.legend.background_fill_alpha = 0.8
-        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
-        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
         self.plot_chronogram.line(x='ts', y='y_true', color='blue',
                                   source=self.chrono_source,
                                   legend_label='Groundtruth')
         self.plot_chronogram.cross(x='ts', y='y_pred', color='red',
                                    source=self.chrono_source,
                                    legend_label='Prediction')
+        self.plot_chronogram.legend.background_fill_alpha = 0.8
+        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
+        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
 
         # Div - Display useful information
         self.div_info = Div()

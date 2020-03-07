@@ -7,6 +7,7 @@ import mne
 from bokeh.io import curdoc
 from bokeh.models import Div, Select, Button, Slider, CheckboxButtonGroup
 from bokeh.layouts import widgetbox, row
+
 from src.vhdr_formatter import format_session
 
 
