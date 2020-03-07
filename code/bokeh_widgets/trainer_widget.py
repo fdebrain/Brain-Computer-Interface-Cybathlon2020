@@ -1,31 +1,27 @@
-import numpy as np
-import logging
-import glob
-import os
-import sys
-from bokeh.io import curdoc
-from bokeh.models.widgets import Div, Select, Button, CheckboxButtonGroup, CheckboxGroup
-from bokeh.models.widgets import Slider
-from bokeh.layouts import row, column
-from data_loading_functions.data_loader import EEGDataset
-from feature_extraction_functions.models import train, save_model
 
-if sys.platform == 'win32':
-    splitter = '\\'
-else:
-    splitter = '/'
+import logging
+from pathlib import Path
+import traceback
+
+import numpy as np
+from bokeh.io import curdoc
+from bokeh.models import Div, Select, Button, Slider
+from bokeh.models import CheckboxButtonGroup, CheckboxGroup
+from bokeh.layouts import row, column
+
+from src.dataloader import load_session, cropping, preprocessing
+from src.models import train, save_model, save_json
 
 
 class TrainerWidget:
     def __init__(self):
-        self.data_path = '../Datasets/Pilots/Pilot_2'
-        self.available_sessions = glob.glob(f'{self.data_path}/*')
-        self.X, self.y = None, None
-        self.fs = 500
+        self.data_path = Path('../Datasets/Pilots/Pilot_2')
+        self.save_path = Path('./saved_models')
 
     @property
-    def model_name(self):
-        return self.select_model.value
+    def available_sessions(self):
+        sessions = self.data_path.glob('*')
+        return [s.name for s in sessions]
 
     @property
     def train_ids(self):
@@ -39,9 +35,29 @@ class TrainerWidget:
         return [self.checkbox_preproc.labels[i] for i in active]
 
     @property
+    def should_reref(self):
+        return 'Rereference' in self.selected_preproc
+
+    @property
+    def should_filter(self):
+        return 'Filter' in self.selected_preproc
+
+    @property
+    def should_standardize(self):
+        return 'Standarsize' in self.selected_preproc
+
+    @property
+    def should_crop(self):
+        return 'Crop' in self.selected_preproc
+
+    @property
     def selected_settings(self):
         active = self.checkbox_settings.active
         return [self.checkbox_settings.labels[i] for i in active]
+
+    @property
+    def model_name(self):
+        return self.select_model.value
 
     @property
     def train_mode(self):
@@ -82,32 +98,37 @@ class TrainerWidget:
 
     def on_load(self):
         X, y = {}, {}
-        for session_path in self.train_ids:
-            id = session_path.split(splitter)[-1]
+        for id in self.train_ids:
             logging.info(f'Loading {id}')
-            self.dataloader_params = {
-                'data_path': f'{session_path}/formatted_filt_{self.fs}Hz/',
-                'fs': self.fs,
-                'filt': 'Filter' in self.selected_preproc,
-                'rereferencing': 'Rereference' in self.selected_preproc,
-                'standardization': 'Standardize' in self.selected_preproc,
-                'valid_ratio': 0.0,
-                'load_test': False,
-                'balanced': True}
-            dataset = EEGDataset(pilot_idx=1, **self.dataloader_params)
 
             try:
-                X[id], y[id], _, _, _, _ = dataset.load_dataset()
-                logging.info(f'{X[id].shape} - {y[id].shape}')
-            except Exception as e:
-                logging.info(f'Loading data failed - {e}')
+                session_path = self.data_path / \
+                    id / f'formatted_filt_500Hz'
+                filepath = session_path / 'train/train1.npz'
+                X[id], y[id], self.fs, self.ch_names = load_session(filepath,
+                                                                    self.start,
+                                                                    self.end)
+            except Exception:
+                logging.info(f'Loading data failed - {traceback.format_exc()}')
                 self.button_train.button_type = 'danger'
-                self.button_train.label = 'Failed'
+                self.button_train.label = 'Training failed'
                 return
 
         # Concatenate all data
         self.X = np.vstack([X[id] for id in X.keys()])
         self.y = np.hstack([y[id] for id in y.keys()]).flatten()
+        logging.info(f'Shape: X {self.X.shape} - y {self.y.shape}')
+
+        # Cropping
+        if self.should_crop:
+            self.X, self.y = cropping(self.X, self.y, self.fs,
+                                      n_crops=8, crop_len=0.5)
+
+        # Preprocessing
+        self.X = preprocessing(self.X, self.fs,
+                               rereference=self.should_reref,
+                               filt=self.should_filter,
+                               standardize=self.should_standardize)
 
         # Update session info
         self.div_info.text = f'<b>Sampling frequency:</b> {self.fs} Hz<br>' \
@@ -120,17 +141,13 @@ class TrainerWidget:
         curdoc().add_next_tick_callback(self.on_train)
 
     def on_train(self):
-        logging.info(f'Extracting MI: [{self.start} to {self.end}]s')
-        self.X = self.X[:, :, int(self.start*self.fs): int(self.end*self.fs)]
-
-        # Instanciate and train model
         try:
             trained_model, cv_mean, cv_std, train_time = train(self.model_name,
                                                                self.X, self.y,
                                                                self.train_mode,
-                                                               n_iters=1)
-        except Exception as e:
-            logging.info(f'Training failed - {e}')
+                                                               n_iters=self.slider_n_iters)
+        except Exception:
+            logging.info(f'Training failed - {traceback.format_exc()}')
             self.button_train.button_type = 'danger'
             self.button_train.label = 'Failed'
             return
@@ -143,17 +160,20 @@ class TrainerWidget:
             else trained_model.best_estimator_
 
         if 'Save' in self.selected_settings:
-            dir_path = './saved_models'
-            if not os.path.isdir(dir_path):
-                logging.info(f'Creating directory {dir_path}')
-                os.mkdir(dir_path)
+            dataset_name = '_'.join([id for id in self.train_ids])
+            filename = f'{self.model_name}_{dataset_name}'
+            save_model(model_to_save, self.save_path, filename)
 
-            logging.info(f'Saving model...')
-            dataset_name = '_'.join([id.split(splitter)[-1]
-                                     for id in self.train_ids])
-            pkl_filename = f"{self.model_name}_{dataset_name}.pkl"
-            save_model(model_to_save, dir_path, pkl_filename)
-            logging.info('Successfully saved model !')
+            model_info = {"Model name": self.model_name,
+                          "Model file": filename,
+                          "Train ids": self.train_ids,
+                          "fs": int(self.fs),
+                          "Shape": self.X.shape,
+                          "Preprocessing": self.selected_preproc,
+                          "Model pipeline": {k: str(v) for k, v in model_to_save.steps},
+                          "CV RMSE": f'{cv_mean:.3f}+-{cv_std:.3f}',
+                          "Train time": train_time}
+            save_json(model_info, self.save_path, filename)
 
         # Update info
         self.button_train.button_type = 'success'
@@ -173,12 +193,15 @@ class TrainerWidget:
         self.select_model.options = ['', 'CSP', 'FBCSP', 'Riemann']
 
         # Slider - Select ROI start (in s after start of epoch)
-        self.slider_roi_start = Slider(start=0, end=6, value=2.5,
+        self.slider_roi_start = Slider(start=0, end=6, value=2,
                                        step=0.25, title='ROI start (s)')
 
         # Slider - Select ROI end (in s after start of epoch)
         self.slider_roi_end = Slider(start=0, end=6, value=6,
                                      step=0.25, title='ROI end (s)')
+
+        self.checkbox_settings = CheckboxButtonGroup(labels=['Save',
+                                                             'Optimize'])
 
         # Slider - Number of iterations if optimization
         self.slider_n_iters = Slider(start=1, end=50, value=1,
@@ -189,10 +212,7 @@ class TrainerWidget:
         self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
                                                             'Standardize',
                                                             'Rereference',
-                                                            'Cropping'])
-
-        self.checkbox_settings = CheckboxButtonGroup(
-            labels=['Save', 'Optimize'])
+                                                            'Crop'])
 
         self.button_train = Button(label='Train', button_type='primary')
         self.button_train.on_click(self.on_train_start)

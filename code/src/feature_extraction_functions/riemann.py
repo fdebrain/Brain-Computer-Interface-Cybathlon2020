@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import scipy.signal
-from preprocessing_functions.preproc_functions import filtering
+from ..preprocessing import filtering
 
 # Source: https://github.com/alexandrebarachant/pyRiemann/blob/master/pyriemann/utils/base.py
 
@@ -43,7 +43,7 @@ def half_vectorization(C):
     Calculates half vectorization of a matrix.
     Input:
         - C: SPD matrix of shape (n_channel,n_channel)
-    Output: 
+    Output:
         - C_vec: Vectorized matrix of shape n_riemann
     '''
     n_channels, _ = C.shape

@@ -1,8 +1,9 @@
-import glob
 import logging
 import subprocess
 import sys
 import time
+from pathlib import Path
+import traceback
 
 import numpy as np
 import serial
@@ -14,10 +15,8 @@ from bokeh.models.widgets import Button, Div, Select, CheckboxButtonGroup
 from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
-from feature_extraction_functions.models import load_model
-from feature_extraction_functions.convnets import ShallowConvNet
-from preprocessing_functions.preproc_functions import filtering, rereference
-from preprocessing_functions.preproc_functions import clipping, standardize
+from src.dataloader import preprocessing
+from src.models import load_model
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
 from src.game_log_reader import GameLogReader
@@ -30,9 +29,9 @@ class PlayerWidget:
         self.n_channels = 61
 
         # Game log reader (separate thread)
+        self.game_logs_path = Path('../game/log')
         self.game_log_reader = None
-        self.game_logs_path = '../game/log/raceLog*.txt'
-        self.ports = '/dev/ttyACM*'
+        self.ports = Path('/dev/ttyACM*')
         self._expected_action = None
         self.thread_log = QtCore.QThreadPool()
 
@@ -40,12 +39,13 @@ class PlayerWidget:
         self.port_sender = None
 
         # Game player
+        self.game_path = Path('../game/brainDriver')
         self.game_player = GamePlayer(self.player_idx)
         self.game_start_time = None
         self.callback_action_id = None
         self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
                                                    y_pred=[]))
-        self.idx2action = {0: "Left", 1: "Right", 2: "Light", 3: "Rest"}
+        self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
 
         # LSL stream reader
         self.parent = parent
@@ -55,20 +55,22 @@ class PlayerWidget:
         self.channel_source = ColumnDataSource(dict(ts=[], data=[]))
 
         # Model
+        self.models_path = Path('./saved_models')
         self.model = None
         self.signal = None
         self._last_pred = (3, "Rest")
 
     @property
     def available_models(self):
-        ml_models = glob.glob('./saved_models/*.pkl')
-        dl_models = glob.glob('./saved_models/*.h5')
+        ml_models = [p.name for p in self.models_path.glob('*.pkl')]
+        dl_models = [p.name for p in self.models_path.glob('*.h5')]
         return [''] + ml_models + dl_models
 
     @property
     def available_ports(self):
         if sys.platform == 'linux':
-            return [''] + glob.glob(self.ports)
+            ports = self.ports.glob('*')
+            return [''] + [p.name for p in ports]
         elif sys.platform == 'win32':
             return [''] + [p.device for p in serial.tools.list_ports.comports()]
 
@@ -78,9 +80,8 @@ class PlayerWidget:
         return [self.checkbox_settings.labels[i] for i in active]
 
     @property
-    def selected_preproc(self):
-        active = self.checkbox_preproc.active
-        return [self.checkbox_preproc.labels[i] for i in active]
+    def model_path(self):
+        return self.models_path / self.select_model.value
 
     @property
     def autoplay(self):
@@ -121,6 +122,27 @@ class PlayerWidget:
         return self.select_model.value
 
     @property
+    def selected_preproc(self):
+        active = self.checkbox_preproc.active
+        return [self.checkbox_preproc.labels[i] for i in active]
+
+    @property
+    def should_reref(self):
+        return 'Rereference' in self.selected_preproc
+
+    @property
+    def should_standardize(self):
+        return 'Standardize' in self.selected_preproc
+
+    @property
+    def should_crop(self):
+        return 'Crop' in self.selected_preproc
+
+    @property
+    def is_convnet(self):
+        return self.select_model.value.split('.')[-1] == 'h5'
+
+    @property
     def channel_idx(self):
         return int(self.select_channel.value.split('-')[0])
 
@@ -132,12 +154,13 @@ class PlayerWidget:
 
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
-        game = subprocess.Popen('../game/brainDriver', shell=False)
+        game = subprocess.Popen(str(self.game_path), shell=False)
         assert game is not None, 'Can\'t launch game !'
 
         # Wait for logfile to be created
         time.sleep(5)
-        log_filename = glob.glob(self.game_logs_path)[-1]
+        logs = list(self.game_logs_path.glob('raceLog*.txt'))
+        log_filename = str(logs[-1])
 
         # Check if log reader already instanciated
         if self.game_log_reader is not None:
@@ -187,22 +210,22 @@ class PlayerWidget:
     def predict(self):
         assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
         X = np.copy(self.signal)
+
+        # Removing FP1 & FP2 TODO: Don't hardcode
         X = np.delete(X, [0, 30], axis=0)
 
+        # Selecting last 1s of signal
+        X = X[:, :, -self.fs:]
+
         # Preprocessing
-        if 'Filter' in self.selected_preproc:
-            X = filtering(X, f_low=0.5, f_high=38,
-                          fs=self.fs, f_order=3)
+        X = preprocessing(X,
+                          rereference=self.should_reref,
+                          standardize=self.should_standardize,
+                          crop=self.should_crop,
+                          dl_shape=self.is_convnet)
 
-        if 'Standardize' in self.selected_preproc:
-            X = clipping(X, 6)
-            X = standardize(X)
-
-        if 'Rereference' in self.selected_preproc:
-            X = rereference(X)
-
-        # Predict on 3.5s of signal (avoid edge effects of filtering) TODO: reshape for DL
-        action_idx = self.model.predict(X[np.newaxis, :, 100:1850])[0]
+        # TODO: Average 10 predictions using 1s of signal
+        action_idx = self.model.predict(X)[0]
         assert action_idx in [0, 1, 2, 3], \
             'Prediction is not in allowed action space'
         return action_idx
@@ -242,7 +265,7 @@ class PlayerWidget:
             logging.info(f'Sending: {action_idx}')
             self.game_player.sendCommand(action_idx)
 
-        self._last_pred = (action_idx, self.idx2action[action_idx])
+        self._last_pred = (action_idx, self.pred2encoding[action_idx])
 
         # Update chronogram source (if race started)
         if self.game_start_time is not None:
@@ -255,22 +278,12 @@ class PlayerWidget:
         self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
             f'<b>Groundtruth:</b> {self.expected_action} <br>' \
             f'<b>Prediction:</b> {self._last_pred} <br>' \
-            f'<b>Accuracy:</b> {self.accuracy} <br>'
+            f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
         self.select_model.options = self.available_models
-
-        # ML Case
-        if new.split('.')[-1] == 'pkl':
-            self.model = load_model(new)
-
-        # TODO: DL Case: input data should be of shape (self.n_trials, 1, self.n_channels, self.n_samples))
-        elif new.split('.')[-1] == 'h5':
-            self.model = ShallowConvNet(n_channels=self.n_channels,
-                                        n_samples=125)
-            self.model.load_weights(new)
-        logging.info(f'Successfully loaded model: {self.model}')
+        self.model = load_model(self.model_path)
 
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select new channel {new}')
@@ -288,12 +301,13 @@ class PlayerWidget:
             self.signal = np.zeros((self.lsl_reader.n_channels, 2000))
             if self.lsl_reader is not None:
                 logging.info('Start periodic callback - LSL')
-                self.select_channel.options = [f'{i} - {ch}' for i, ch
+                self.select_channel.options = [f'{i+1} - {ch}' for i, ch
                                                in enumerate(self.lsl_reader.ch_names)]
                 self.create_lsl_callback()
+                self.button_lsl.label = 'Reading LSL stream'
                 self.button_lsl.button_type = 'success'
-        except Exception as e:
-            logging.info(e)
+        except Exception:
+            logging.info(f'No LSL stream - {traceback.format_exc()}')
             self.lsl_reader = None
 
     def create_lsl_callback(self):
@@ -318,23 +332,25 @@ class PlayerWidget:
             if len(data.shape) > 1:
                 # Clean signal and reference TODO: just for visualization purpose
                 data = np.swapaxes(data, 1, 0)
-                data = 1e6 * data
+                # data = 1e6 * data
 
                 # Update source
                 ch = self.channel_idx
                 self.channel_source.stream(dict(ts=ts,
                                                 data=data[ch, :]),
-                                           rollover=1000)
+                                           rollover=int(2*self.fs))
                 # Update signal
                 chunk_size = data.shape[-1]
                 self.signal = np.roll(self.signal, -chunk_size, axis=-1)
                 self.signal[:, -chunk_size:] = data
 
-        except Exception as e:
-            logging.info(f'Ending periodic callback - {e}')
-            self.button_lsl.button_type = 'warning'
+        except Exception:
+            logging.info(
+                f'Ending periodic callback - {traceback.format_exc()}')
             self.remove_lsl_callback()
             self.remove_action_callback()
+            self.button_lsl.label = 'No LSL stream'
+            self.button_lsl.button_type = 'warning'
 
     def create_widget(self):
         # Button - Launch Cybathlon game in new window
@@ -368,10 +384,11 @@ class PlayerWidget:
         self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
         self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
                                                             'Standardize',
-                                                            'Rereference'])
+                                                            'Rereference',
+                                                            'Crop'])
 
-        # Select - Channel to visualize TODO: get channel names for LSL to get
-        self.select_channel = Select(title='Select channel', value='0 - Fp1')
+        # Select - Channel to visualize
+        self.select_channel = Select(title='Select channel', value='1 - Fp1')
         self.select_channel.on_change('value', self.on_channel_change)
 
         # Plot - LSL EEG Stream
@@ -389,9 +406,14 @@ class PlayerWidget:
                                       plot_height=300,
                                       plot_width=800)
         self.plot_chronogram.line(x='ts', y='y_true', color='blue',
-                                  source=self.chrono_source)
+                                  source=self.chrono_source,
+                                  legend_label='Groundtruth')
         self.plot_chronogram.cross(x='ts', y='y_pred', color='red',
-                                   source=self.chrono_source)
+                                   source=self.chrono_source,
+                                   legend_label='Prediction')
+        self.plot_chronogram.legend.background_fill_alpha = 0.8
+        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
+        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
 
         # Div - Display useful information
         self.div_info = Div()
