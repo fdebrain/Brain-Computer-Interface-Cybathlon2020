@@ -9,19 +9,26 @@ from bokeh.models import Div, Select, Button, Slider
 from bokeh.models import CheckboxButtonGroup, CheckboxGroup
 from bokeh.layouts import row, column
 
-from src.dataloader import load_session, cropping, preprocessing
-from src.models import train, save_model, save_json
+from src.dataloader import load_session, cropping
+from src.pipeline import get_pipeline, save_json, save_pipeline
+from src.trainer import train
 
 
 class TrainerWidget:
     def __init__(self):
         self.data_path = Path('../Datasets/Pilots/Pilot_2')
         self.save_path = Path('./saved_models')
+        self.active_preproc_ordered = []
 
     @property
     def available_sessions(self):
         sessions = self.data_path.glob('*')
         return [s.name for s in sessions]
+
+    @property
+    def selected_preproc(self):
+        active = self.active_preproc_ordered
+        return [self.checkbox_preproc.labels[i] for i in active]
 
     @property
     def train_ids(self):
@@ -30,21 +37,11 @@ class TrainerWidget:
         return selected_ids
 
     @property
-    def selected_preproc(self):
-        active = self.checkbox_preproc.active
-        return [self.checkbox_preproc.labels[i] for i in active]
-
-    @property
-    def should_reref(self):
-        return 'Rereference' in self.selected_preproc
-
-    @property
-    def should_filter(self):
-        return 'Filter' in self.selected_preproc
-
-    @property
-    def should_standardize(self):
-        return 'Standarsize' in self.selected_preproc
+    def preproc_config(self):
+        config_cn = dict(sigma=6)
+        config_bpf = dict(fs=self.fs, f_order=2, f_type='butter',
+                          f_low=4, f_high=38)
+        return {'CN': config_cn, 'BPF': config_bpf}
 
     @property
     def should_crop(self):
@@ -58,6 +55,16 @@ class TrainerWidget:
     @property
     def model_name(self):
         return self.select_model.value
+
+    @property
+    def model_config(self):
+        config = {'model_name': self.model_name,
+                  'C': 10}
+        return config
+
+    @property
+    def is_convnet(self):
+        return self.model_name == 'ConvNet'
 
     @property
     def train_mode(self):
@@ -84,9 +91,23 @@ class TrainerWidget:
         logging.info(f"Select train sessions {new}")
         self.update_widget()
 
+    def on_preproc_change(self, attr, old, new):
+        # Case 1: Add preproc
+        if len(new) > len(old):
+            to_add = list(set(new) - set(old))[0]
+            self.active_preproc_ordered.append(to_add)
+        # Case 2: Remove preproc
+        else:
+            to_remove = list(set(old) - set(new))[0]
+            self.active_preproc_ordered.remove(to_remove)
+
+        logging.info(f'Preprocessing selected: {self.selected_preproc}')
+        self.update_widget()
+
     def update_widget(self):
         self.button_train.button_type = 'primary'
         self.button_train.label = 'Train'
+        self.div_info.text = f'<b>Preprocessing selected:</b> {self.selected_preproc} <br>'
 
     def on_train_start(self):
         assert self.model_name != '', 'Please select a model !'
@@ -117,18 +138,15 @@ class TrainerWidget:
         # Concatenate all data
         self.X = np.vstack([X[id] for id in X.keys()])
         self.y = np.hstack([y[id] for id in y.keys()]).flatten()
-        logging.info(f'Shape: X {self.X.shape} - y {self.y.shape}')
 
         # Cropping
         if self.should_crop:
             self.X, self.y = cropping(self.X, self.y, self.fs,
                                       n_crops=8, crop_len=0.5)
 
-        # Preprocessing
-        self.X = preprocessing(self.X, self.fs,
-                               rereference=self.should_reref,
-                               filt=self.should_filter,
-                               standardize=self.should_standardize)
+        if self.is_convnet:
+            assert self.should_crop, 'ConvNet requires cropping !'
+            self.X = self.X[:, np.newaxis, :, :]
 
         # Update session info
         self.div_info.text = f'<b>Sampling frequency:</b> {self.fs} Hz<br>' \
@@ -141,20 +159,22 @@ class TrainerWidget:
         curdoc().add_next_tick_callback(self.on_train)
 
     def on_train(self):
+        pipeline, search_space = get_pipeline(self.selected_preproc,
+                                              self.preproc_config,
+                                              self.model_config)
+
         try:
-            trained_model, cv_mean, cv_std, train_time = train(self.model_name,
-                                                               self.X, self.y,
+            logging.info(f'Shape: X {self.X.shape} - y {self.y.shape}')
+            trained_model, cv_mean, cv_std, train_time = train(self.X, self.y,
+                                                               pipeline,
+                                                               search_space,
                                                                self.train_mode,
-                                                               n_iters=self.slider_n_iters)
+                                                               self.n_iters)
         except Exception:
             logging.info(f'Training failed - {traceback.format_exc()}')
             self.button_train.button_type = 'danger'
             self.button_train.label = 'Failed'
             return
-
-        logging.info(f'Trained successfully in {train_time:.0f}s \n'
-                     f'Accuracy: {cv_mean:.2f}+-{cv_std:.2f} \n'
-                     f'{trained_model}')
 
         model_to_save = trained_model if self.train_mode == 'validate' \
             else trained_model.best_estimator_
@@ -162,18 +182,22 @@ class TrainerWidget:
         if 'Save' in self.selected_settings:
             dataset_name = '_'.join([id for id in self.train_ids])
             filename = f'{self.model_name}_{dataset_name}'
-            save_model(model_to_save, self.save_path, filename)
+            save_pipeline(model_to_save, self.save_path, filename)
 
             model_info = {"Model name": self.model_name,
                           "Model file": filename,
                           "Train ids": self.train_ids,
-                          "fs": int(self.fs),
+                          "fs": self.fs,
                           "Shape": self.X.shape,
                           "Preprocessing": self.selected_preproc,
                           "Model pipeline": {k: str(v) for k, v in model_to_save.steps},
                           "CV RMSE": f'{cv_mean:.3f}+-{cv_std:.3f}',
                           "Train time": train_time}
             save_json(model_info, self.save_path, filename)
+
+        logging.info(f'{model_to_save} \n'
+                     f'Trained successfully in {train_time:.0f}s \n'
+                     f'Accuracy: {cv_mean:.2f}+-{cv_std:.2f}')
 
         # Update info
         self.button_train.button_type = 'success'
@@ -190,7 +214,7 @@ class TrainerWidget:
         # Select - Choose model to train
         self.select_model = Select(title="Model")
         self.select_model.on_change('value', self.on_model_change)
-        self.select_model.options = ['', 'CSP', 'FBCSP', 'Riemann']
+        self.select_model.options = ['', 'CSP', 'FBCSP', 'Riemann', 'ConvNet']
 
         # Slider - Select ROI start (in s after start of epoch)
         self.slider_roi_start = Slider(start=0, end=6, value=2,
@@ -204,15 +228,16 @@ class TrainerWidget:
                                                              'Optimize'])
 
         # Slider - Number of iterations if optimization
-        self.slider_n_iters = Slider(start=1, end=50, value=1,
+        self.slider_n_iters = Slider(start=1, end=50, value=5,
                                      title='Iterations (optimization)')
 
         # Checkbox - Choose preprocessing steps
         self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
-        self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
-                                                            'Standardize',
-                                                            'Rereference',
+        self.checkbox_preproc = CheckboxButtonGroup(labels=['BPF',
+                                                            'CN',
+                                                            'CAR',
                                                             'Crop'])
+        self.checkbox_preproc.on_change('active', self.on_preproc_change)
 
         self.button_train = Button(label='Train', button_type='primary')
         self.button_train.on_click(self.on_train_start)

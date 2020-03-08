@@ -15,8 +15,9 @@ from bokeh.models.widgets import Button, Div, Select, CheckboxButtonGroup
 from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
-from src.dataloader import preprocessing
-from src.models import load_model
+from src.pipeline import load_pipeline
+from src.dataloader import cropping
+from src.models import predict
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
 from src.game_log_reader import GameLogReader
@@ -207,29 +208,6 @@ class PlayerWidget:
             logging.info('Select port first !')
             self.checkbox_settings.active = [0]
 
-    def predict(self):
-        assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
-        X = np.copy(self.signal)
-
-        # Removing FP1 & FP2 TODO: Don't hardcode
-        X = np.delete(X, [0, 30], axis=0)
-
-        # Selecting last 1s of signal
-        X = X[:, :, -self.fs:]
-
-        # Preprocessing
-        X = preprocessing(X,
-                          rereference=self.should_reref,
-                          standardize=self.should_standardize,
-                          crop=self.should_crop,
-                          dl_shape=self.is_convnet)
-
-        # TODO: Average 10 predictions using 1s of signal
-        action_idx = self.model.predict(X)[0]
-        assert action_idx in [0, 1, 2, 3], \
-            'Prediction is not in allowed action space'
-        return action_idx
-
     def create_action_callback(self):
         assert self.callback_action_id is None, 'Action callback already exists!'
         logging.info('Create action callback')
@@ -252,8 +230,24 @@ class PlayerWidget:
 
         # Case 2: Model prediction - Predict from LSL stream
         elif self.should_predict:
+            assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
             model_name = self.model_name
-            action_idx = self.predict()
+
+            X = np.copy(self.signal)
+
+            # Removing FP1 & FP2 TODO: Don't hardcode
+            X = np.delete(X, [0, 30], axis=0)
+
+            # Selecting last 1s of signal
+            X = X[:, :, -self.fs:]
+
+            # Cropping
+            X, _ = cropping(X, [None], self.fs,
+                            n_crops=10, crop_len=0.5)
+
+            # TODO: test
+            action_idx = predict(X, self.model, self.is_convnet)
+            logging.info(f'Action idx: {action_idx}')
 
         # Case 3: Remove callback
         else:
@@ -283,7 +277,7 @@ class PlayerWidget:
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
         self.select_model.options = self.available_models
-        self.model = load_model(self.model_path)
+        self.model = load_pipeline(self.model_path)
 
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select new channel {new}')
