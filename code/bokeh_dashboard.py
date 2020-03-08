@@ -1,7 +1,5 @@
-# Formatting data in dataloader: progress bar
-# Model widget (load data, select preprocessing, select model, train button)
-
 import logging
+
 from bokeh.io import curdoc
 from bokeh.models.widgets import Tabs, Panel
 from bokeh_widgets.formatter_widget import FormatterWidget

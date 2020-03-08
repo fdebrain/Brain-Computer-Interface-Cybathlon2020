@@ -94,8 +94,9 @@ class FormatterWidget:
             fs = int(raw.info['sfreq'])
             n_channels = len(raw.ch_names)
             n_samples += raw.n_times
-            events = Counter([e[-1]for e in mne.events_from_annotations(raw,
-                                                                        verbose=False)[0]])
+
+            events = mne.events_from_annotations(raw, verbose=False)[0]
+            events = Counter([e[-1]for e in events])
             for event in events:
                 events_counter[event] = events_counter.get(event, 0) + \
                     events[event]
