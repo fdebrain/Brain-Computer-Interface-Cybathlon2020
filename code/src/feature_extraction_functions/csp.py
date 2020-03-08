@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class CSP(BaseEstimator, TransformerMixin):
-    def __init__(self, n_classes=4, m=2, regularize_cov=False):
+    def __init__(self, n_classes=4, m=2, regularize_cov=True):
         self.m = m
         self.n_classes = n_classes
         self.regularize_cov = regularize_cov
