@@ -8,12 +8,13 @@ from sklearn.metrics import accuracy_score
 from bokeh.io import curdoc
 from bokeh.plotting import figure
 from bokeh.models import Div, Select, Button, Slider
-from bokeh.models import ColumnDataSource, CheckboxButtonGroup
+from bokeh.models import ColumnDataSource
 from bokeh.layouts import row, column
 
 from src.vhdr_formatter import load_vhdr
-from src.models import load_model, predict
-from src.dataloader import cropping, preprocessing
+from src.models import predict
+from src.pipeline import load_pipeline
+from src.dataloader import cropping
 
 
 class TestWidget:
@@ -54,27 +55,6 @@ class TestWidget:
     @property
     def model_path(self):
         return self.models_path / self.select_model.value
-
-    @property
-    def selected_preproc(self):
-        active = self.checkbox_preproc.active
-        return [self.checkbox_preproc.labels[i] for i in active]
-
-    @property
-    def should_reref(self):
-        return 'Rereference' in self.selected_preproc
-
-    @property
-    def should_filter(self):
-        return 'Filter' in self.selected_preproc
-
-    @property
-    def should_standardize(self):
-        return 'Standarsize' in self.selected_preproc
-
-    @property
-    def should_crop(self):
-        return 'Crop' in self.selected_preproc
 
     @property
     def is_convnet(self):
@@ -130,7 +110,7 @@ class TestWidget:
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select model {new}')
-        self.model = load_model(self.model_path)
+        self.pipeline = load_pipeline(self.model_path)
         self.update_widgets()
 
     def on_validate_start(self):
@@ -151,14 +131,7 @@ class TestWidget:
             epochs, _ = cropping(epoch, [groundtruth], self.fs,
                                  n_crops=10, crop_len=0.5)
 
-            # Preprocessing
-            epochs = preprocessing(epochs, self.fs,
-                                   rereference=self.should_reref,
-                                   filt=self.should_filter,
-                                   standardize=self.should_standardize,
-                                   dl_shape=self.is_convnet)
-
-            y_pred = predict(epochs, self.model, self.is_convnet)
+            y_pred = predict(epochs, self.pipeline, self.is_convnet)
 
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.gd2pred[groundtruth]],
@@ -166,6 +139,7 @@ class TestWidget:
 
         # TODO: Metrics recall/accuracy for each MI task + matrix
         self.div_info.text += f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
+        logging.info(f'Accuracy: {self.accuracy:.2f}')
 
         self.button_validate.label = 'Finished'
         self.button_validate.button_type = 'success'
@@ -189,12 +163,6 @@ class TestWidget:
         self.select_model = Select(title="Pre-trained model:")
         self.select_model.options = self.available_models
         self.select_model.on_change('value', self.on_model_change)
-
-        self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
-        self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
-                                                            'Standardize',
-                                                            'Rereference',
-                                                            'Crop'])
 
         self.slider_win_len = Slider(start=0.5, end=4, value=1,
                                      step=0.25, title='Win len (s)')
@@ -221,8 +189,7 @@ class TestWidget:
         self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
 
         column1 = column(self.select_session, self.select_run,
-                         self.select_model, self.div_preproc,
-                         self.checkbox_preproc, self.button_validate,
+                         self.select_model, self.button_validate,
                          self.div_info)
         column2 = column(self.plot_chronogram)
 

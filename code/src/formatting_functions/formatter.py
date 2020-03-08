@@ -5,14 +5,11 @@ import h5py
 import logging
 from copy import deepcopy
 from joblib import Parallel, delayed
-# import sys
-# sys.path.append('..')
 
 import numpy as np
 import scipy.io
 import scipy.signal
 import mne
-import resampy
 
 from ..preprocessing import filtering
 
@@ -103,31 +100,6 @@ class Formatter:
 
         # Reshape from (n_samples, n_channels) to (n_channels, n_samples)
         return eeg, events, mapping
-
-    def resampling(self, raw, events, new_fs):
-        """
-        Resample continuous recording using `resampy`.
-        Parameters
-        """
-        print('Resampling...')
-        if new_fs == raw.info["sfreq"]:
-            print("Just copying data, no resampling, since new sampling rate same.")
-            return deepcopy(raw)
-        print("Resampling from {:f} to {:f} Hz.".format(
-            raw.info["sfreq"], new_fs))
-
-        data = raw.get_data().T
-
-        new_data = resampy.resample(data, raw.info["sfreq"],
-                                    new_fs, axis=0, filter="kaiser_fast").T
-        old_fs = raw.info["sfreq"]
-        new_info = deepcopy(raw.info)
-        new_info["sfreq"] = new_fs
-        event_samples_old = events[:, 0]
-        event_samples = event_samples_old * new_fs / float(old_fs)
-        events[:, 0] = event_samples
-        self.fs = new_fs
-        return mne.io.RawArray(new_data, new_info), events
 
     def labelling(self, events, signal_len, file_idx):
         print("Counting labels before labelling")

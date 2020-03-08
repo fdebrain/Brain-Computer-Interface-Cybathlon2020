@@ -3,8 +3,6 @@ from collections import Counter
 
 import numpy as np
 
-from .preprocessing import (rereferencing, filtering, clipping, standardizing)
-
 
 def load_session(session_path, start=None, end=None):
     logging.info(f'Loading {session_path}')
@@ -20,21 +18,7 @@ def load_session(session_path, start=None, end=None):
     logging.info(f'Available classes: {Counter(y)}')
     logging.info(f'Sample frequency: {fs}Hz')
 
-    return X, y, fs, ch_names
-
-
-def preprocessing(signal, fs, rereference=False, filt=False, standardize=False, dl_shape=False):
-    if rereference:
-        signal = rereferencing(signal)
-    if filt:
-        signal = filtering(signal, fs, f_order=2,
-                           f_low=4, f_high=38)
-    if standardize:
-        signal = clipping(signal, sigma=6)
-        signal = standardizing(signal)
-    if dl_shape:
-        signal = signal[:, np.newaxis, :, :]
-    return signal
+    return X, y, int(fs), ch_names
 
 
 def crop_single_trial(x, stride, n_samples, n_crops):

@@ -1,5 +1,92 @@
 import numpy as np
 import scipy.signal
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+def get_CAR():
+    search_space = {}
+    preproc = CommonAverageReference()
+    return preproc, search_space
+
+
+def get_CN(sigma):
+    search_space = {}
+    preproc = ClipNormalizer(sigma)
+    return preproc, search_space
+
+
+def get_BPF(fs, f_order, f_type, f_low, f_high):
+    search_space = {'bpf__f_order': (2, 5),
+                    'bpf__f_low': [0, 2, 4],
+                    'bpf__f_high': [30, 40, 100]}
+    preproc = BandPassFilter(fs, f_order, f_type, f_low, f_high)
+    return preproc, search_space
+
+
+def get_preprocessor(selected_preproc, config):
+    """[summary]
+
+    Arguments:
+        selected_preproc {List[str]} -- List of preprocessing step names
+        config {dict} --
+
+    Returns:
+        List[tuples], List[int] -- List of (preproc_name, object).
+    """
+    preproc_steps = []
+    search_space = {}
+    for preproc in selected_preproc:
+        if preproc == 'CAR':
+            car, _ = get_CAR()
+            preproc_steps.append(('car', car))
+
+        if preproc == 'CN':
+            cn, ss = get_CN(**config['CN'])
+            preproc_steps.append(('cn', cn))
+            search_space = {**search_space, **ss}
+
+        if preproc == 'BPF':
+            bpf, ss = get_BPF(**config['BPF'])
+            preproc_steps.append(('bpf', bpf))
+            search_space = {**search_space, **ss}
+
+    return preproc_steps, search_space
+
+
+class CommonAverageReference(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return rereferencing(X)
+
+
+class ClipNormalizer(BaseEstimator, TransformerMixin):
+    def __init__(self, sigma):
+        self.sigma = sigma
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = clipping(X, self.sigma)
+        return standardizing(X)
+
+
+class BandPassFilter(BaseEstimator, TransformerMixin):
+    def __init__(self, fs, f_order, f_type, f_low, f_high):
+        self.fs = fs
+        self.f_order = f_order
+        self.f_type = f_type
+        self.f_low = f_low
+        self.f_high = f_high
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return filtering(X, self.fs, self.f_order, self.f_type,
+                         self.f_low, self.f_high)
 
 
 def rereferencing(X):
@@ -57,7 +144,6 @@ def filtering(X, fs=250, f_order=5, f_type='butter', f_low=4, f_high=38):
 
 def clipping(X, sigma):
     ''' Outputs clipped signal by setting min/max boundary amplitude values (+-sigma*std).'''
-    mean = np.mean(X, axis=-1, keepdims=True)
     median = np.median(X, axis=-1, keepdims=True)
     std = np.std(X, axis=-1, keepdims=True)
 
