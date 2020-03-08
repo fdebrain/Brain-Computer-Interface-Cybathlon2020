@@ -4,14 +4,14 @@ from collections import Counter
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 
 from .feature_extraction_functions.csp import CSP
 from .feature_extraction_functions.fbcsp import FBCSP
 from .feature_extraction_functions.riemann import Riemann
-from .feature_extraction_functions.convnets import ShallowConvNet
+from .feature_extraction_functions.convnets import shallowconvnet
 
 # Reproducibility
 seed_value = 0
@@ -60,7 +60,7 @@ def get_Riemann_model():
 
 def convnet_wrapper(convnet_name, lr):
     if convnet_name == 'Shallow':
-        convnet = ShallowConvNet(nb_classes=4,
+        convnet = shallowconvnet(n_classes=4,
                                  n_channels=61,
                                  n_samples=250)
 
@@ -72,9 +72,15 @@ def convnet_wrapper(convnet_name, lr):
 
 def get_ConvNet_model():
     search_space = {}
-    model = KerasClassifier(convnet_wrapper, epochs=1,
+    es = EarlyStopping(patience=100, monitor='val_loss', verbose=1)
+    mc = ModelCheckpoint("checkpoint.h5", 'val_loss',
+                         verbose=0, save_best_only=True,
+                         save_weights_only=True)
+
+    model = KerasClassifier(convnet_wrapper, epochs=500,
                             batch_size=16, lr=1e-3,
-                            convnet_name='Shallow')
+                            convnet_name='Shallow',
+                            callbacks=[es, mc])
     return model, search_space
 
 
