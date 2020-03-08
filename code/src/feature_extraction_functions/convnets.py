@@ -1,13 +1,14 @@
 # Source: https://github.com/robintibor/arl-eegmodels/blob/master/EEGModels.py
 
-from keras.constraints import max_norm
-from keras.models import Model
-from keras.layers import Input, Flatten, DepthwiseConv2D, SpatialDropout2D, Lambda
-from keras.layers.core import Dense, Activation, Permute, Dropout
-from keras.layers.convolutional import Conv2D, MaxPooling2D, AveragePooling2D, SeparableConv2D
-from keras.layers.normalization import BatchNormalization
-from keras.regularizers import l2
-import keras.backend as K
+from tensorflow.keras.constraints import max_norm
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import (Input, Flatten, DepthwiseConv2D, SpatialDropout2D,
+                                     Lambda, Dense, Activation, Dropout)
+from tensorflow.keras.layers import (Conv2D, MaxPooling2D, AveragePooling2D,
+                                     SeparableConv2D)
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.regularizers import l2
+import tensorflow.keras.backend as K
 K.set_image_data_format("channels_first")
 
 
@@ -165,8 +166,6 @@ def ShallowConvNet(nb_classes=4, n_channels=22, n_samples=1125, dropoutRate=0.5,
 
 
 def DevConvNet(nb_classes=4, n_channels=22, n_samples=1125, dropoutRate=0.5, l2_reg=0.01, undersample=1, activation='elu', initializer='glorot_uniform', bn=True, dropout=Dropout):
-    from keras.layers.noise import AlphaDropout
-
     def square(x):
         return K.square(x)
 
