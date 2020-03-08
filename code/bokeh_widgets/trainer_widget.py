@@ -146,7 +146,7 @@ class TrainerWidget:
 
         if self.is_convnet:
             assert self.should_crop, 'ConvNet requires cropping !'
-            self.X = self.X[:, np.newaxis, :, :]
+            self.X = self.X[:, :, :, np.newaxis]
 
         # Update session info
         self.div_info.text = f'<b>Sampling frequency:</b> {self.fs} Hz<br>' \
@@ -169,7 +169,8 @@ class TrainerWidget:
                                                                pipeline,
                                                                search_space,
                                                                self.train_mode,
-                                                               self.n_iters)
+                                                               self.n_iters,
+                                                               n_jobs=1)
         except Exception:
             logging.info(f'Training failed - {traceback.format_exc()}')
             self.button_train.button_type = 'danger'

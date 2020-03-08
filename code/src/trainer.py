@@ -6,7 +6,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from skopt import BayesSearchCV
 
 
-def train(X_train, y_train, pipeline, search_space, mode, n_iters=10):
+def train(X_train, y_train, pipeline, search_space, mode, n_iters=10, n_jobs=1):
     logging.info(f'Training pipeline in {mode} mode '
                  f'using {len(X_train)} trials')
     start_time = time.time()
@@ -15,7 +15,7 @@ def train(X_train, y_train, pipeline, search_space, mode, n_iters=10):
     skf = list(skf.split(X_train, y_train))
 
     if mode == 'optimize':
-        pipeline = BayesSearchCV(pipeline, search_space, cv=skf, n_jobs=-1,
+        pipeline = BayesSearchCV(pipeline, search_space, cv=skf, n_jobs=n_jobs,
                                  refit=True, scoring='accuracy', n_iter=n_iters,
                                  verbose=True, random_state=0)
         pipeline.fit(X_train, y_train)
@@ -27,7 +27,7 @@ def train(X_train, y_train, pipeline, search_space, mode, n_iters=10):
         cv_std = pipeline.cv_results_[f'std_test_score'][pipeline.best_index_]
     elif mode == 'validate':
         scores = cross_val_score(pipeline, X_train, y_train,
-                                 cv=skf, n_jobs=-1,
+                                 cv=skf, n_jobs=n_jobs,
                                  scoring='accuracy')
         logging.info(scores)
         cv_mean = np.mean(scores)

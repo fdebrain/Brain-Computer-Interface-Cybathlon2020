@@ -8,8 +8,9 @@ from tensorflow.keras.layers import (Conv2D, MaxPooling2D, AveragePooling2D,
                                      SeparableConv2D)
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.regularizers import l2
+from tensorflow.keras.models import Sequential
+
 import tensorflow.keras.backend as K
-K.set_image_data_format("channels_first")
 
 
 def EEGNet(nb_classes=4, n_channels=22, n_samples=int(250*7.5),
@@ -116,7 +117,47 @@ def DeepConvNet(nb_classes=4, n_channels=22, n_samples=1875,
     return Model(inputs=input_main, outputs=softmax)
 
 
-def ShallowConvNet(nb_classes=4, n_channels=22, n_samples=1125, dropoutRate=0.5, l2_reg=0.01, undersample=1):
+def shallowconvnet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01, undersample=1):
+    def square(x):
+        return K.square(x)
+
+    def log(x):
+        return K.log(K.clip(x, min_value=1e-7, max_value=10000))
+
+    model = Sequential()
+    model.add(Input((n_channels, n_samples, 1)))
+    model.add(Conv2D(40, (1, 50//undersample),
+                     input_shape=(n_channels, n_samples, 1),
+                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
+                     kernel_regularizer=l2(l2_reg),
+                     name='conv1'))
+    model.add(Conv2D(40, (n_channels, 1),
+                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
+                     kernel_regularizer=l2(l2_reg),
+                     name='conv2'))
+    model.add(BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1))
+    model.add(Activation('elu'))
+
+    # Similar to power band feature extraction (log-variance)
+    model.add(Lambda(lambda x: K.square(x)))
+    model.add(AveragePooling2D(pool_size=(1, 150 // undersample),
+                               strides=(1, 30//undersample)))
+    model.add(Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
+                                            max_value=10000))))
+
+    # Classifier
+    model.add(Dropout(dropoutRate))
+    model.add(Flatten())
+    model.add(Dense(n_classes,
+                    kernel_constraint=max_norm(0.5),
+                    name='fc'))
+
+    # Probabilities
+    model.add(Activation('softmax'))
+    return model
+
+
+def ShallowConvNet(n_classes=4, n_channels=22, n_samples=1125, dropoutRate=0.5, l2_reg=0.01, undersample=1):
     """ Keras implementation of the Shallow Convolutional Network as described
     in Schirrmeister et. al. (2017), Human Brain Mapping."""
     def square(x):
@@ -126,11 +167,11 @@ def ShallowConvNet(nb_classes=4, n_channels=22, n_samples=1125, dropoutRate=0.5,
         return K.log(K.clip(x, min_value=1e-7, max_value=10000))
 
     # start the model
-    input_main = Input((1, n_channels, n_samples))
+    input_main = Input((n_channels, n_samples, 1))
 
     # Temporal filtering
     block1 = Conv2D(40, (1, 50//undersample),
-                    input_shape=(1, n_channels, n_samples),
+                    input_shape=(n_channels, n_samples, 1),
                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                     kernel_regularizer=l2(l2_reg),
                     name='conv1')(input_main)
@@ -149,13 +190,13 @@ def ShallowConvNet(nb_classes=4, n_channels=22, n_samples=1125, dropoutRate=0.5,
     block1 = Lambda(lambda x: K.square(x))(block1)
     block1 = AveragePooling2D(pool_size=(1, 150 // undersample),
                               strides=(1, 30//undersample))(block1)
-    block1 = Lambda(lambda x: K.log(
-        K.clip(x, min_value=1e-7, max_value=10000)))(block1)
+    block1 = Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
+                                           max_value=10000)))(block1)
 
     # Classifier
     block1 = Dropout(dropoutRate)(block1)
     flatten = Flatten()(block1)
-    dense = Dense(nb_classes,
+    dense = Dense(n_classes,
                   kernel_constraint=max_norm(0.5),
                   name='fc')(flatten)
 
