@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 
 from .feature_extraction_functions.csp import CSP
@@ -72,15 +71,9 @@ def convnet_wrapper(convnet_name, lr):
 
 def get_ConvNet_model():
     search_space = {}
-    es = EarlyStopping(patience=100, monitor='val_loss', verbose=1)
-    mc = ModelCheckpoint("checkpoint.h5", 'val_loss',
-                         verbose=0, save_best_only=True,
-                         save_weights_only=True)
-
     model = KerasClassifier(convnet_wrapper, epochs=500,
                             batch_size=16, lr=1e-3,
-                            convnet_name='Shallow',
-                            callbacks=[es, mc])
+                            convnet_name='Shallow')
     return model, search_space
 
 

@@ -170,7 +170,8 @@ class TrainerWidget:
                                                                search_space,
                                                                self.train_mode,
                                                                self.n_iters,
-                                                               n_jobs=1)
+                                                               n_jobs=1,
+                                                               is_convnet=self.is_convnet)
         except Exception:
             logging.info(f'Training failed - {traceback.format_exc()}')
             self.button_train.button_type = 'danger'
