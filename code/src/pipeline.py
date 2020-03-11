@@ -6,6 +6,7 @@ import pickle
 from sklearn.pipeline import Pipeline
 
 from .preprocessing import get_preprocessor
+from .feature_extraction_functions.convnets import ShallowConvNet
 from .models import get_model
 
 
@@ -39,9 +40,9 @@ def load_pipeline(model_path):
         unpickle = open(model_path, 'rb')
         model = pickle.load(unpickle)
     elif model_path.suffix == '.h5':
-        model, _ = get_model('Shallow', {'n_channels': 61,
-                                         'n_samples': 250})
-        model.load_weights(model_path)
+        model = ShallowConvNet()
+        model.load_weights(str(model_path))
+        logging.info(model.summary())
     else:
         raise ValueError('Model format not recognized !')
 

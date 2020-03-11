@@ -4,17 +4,18 @@ from pathlib import Path
 
 import numpy as np
 import mne
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import balanced_accuracy_score
 from bokeh.io import curdoc
 from bokeh.plotting import figure
 from bokeh.models import Div, Select, Button, Slider
-from bokeh.models import ColumnDataSource
+from bokeh.models import ColumnDataSource, CheckboxButtonGroup
 from bokeh.layouts import row, column
 
 from src.vhdr_formatter import load_vhdr
+from src.preprocessing import preprocessing
 from src.models import predict
+from src.preprocessing import cropping
 from src.pipeline import load_pipeline
-from src.dataloader import cropping
 
 
 class TestWidget:
@@ -47,6 +48,23 @@ class TestWidget:
         return self.session_path / 'game' / self.select_run.value
 
     @property
+    def selected_preproc(self):
+        active = self.checkbox_preproc.active
+        return [self.checkbox_preproc.labels[i] for i in active]
+
+    @property
+    def should_reref(self):
+        return 'Rereference' in self.selected_preproc
+
+    @property
+    def should_filter(self):
+        return 'Filter' in self.selected_preproc
+
+    @property
+    def should_standardize(self):
+        return 'Standardize' in self.selected_preproc
+
+    @property
     def available_models(self):
         ml_models = [p.name for p in self.models_path.glob('*.pkl')]
         dl_models = [p.name for p in self.models_path.glob('*.h5')]
@@ -68,7 +86,7 @@ class TestWidget:
     def accuracy(self):
         y_pred = self.chrono_source.data['y_pred']
         y_true = self.chrono_source.data['y_true']
-        return accuracy_score(y_true, y_pred)
+        return balanced_accuracy_score(y_true, y_pred)
 
     def on_session_change(self, attr, old, new):
         logging.info(f'Select session {new}')
@@ -110,6 +128,7 @@ class TestWidget:
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select model {new}')
+        assert new != '', 'Select a model first !'
         self.pipeline = load_pipeline(self.model_path)
         self.update_widgets()
 
@@ -127,11 +146,16 @@ class TestWidget:
             start_idx = end_idx - self.win_len
             epoch = self._data['values'][np.newaxis, :, start_idx:end_idx]
 
+            # Preprocess
+            epoch = preprocessing(epoch, self.fs, self.should_reref,
+                                  self.should_filter,
+                                  self.should_standardize)
+
             # Cropping
             epochs, _ = cropping(epoch, [groundtruth], self.fs,
                                  n_crops=10, crop_len=0.5)
 
-            y_pred = predict(epochs, self.pipeline, self.is_convnet)
+            y_pred, _ = predict(epochs, self.pipeline, self.is_convnet)
 
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.gd2pred[groundtruth]],
@@ -164,6 +188,11 @@ class TestWidget:
         self.select_model.options = self.available_models
         self.select_model.on_change('value', self.on_model_change)
 
+        self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
+        self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
+                                                            'Standardize',
+                                                            'Rereference'])
+
         self.slider_win_len = Slider(start=0.5, end=4, value=1,
                                      step=0.25, title='Win len (s)')
 
@@ -189,7 +218,8 @@ class TestWidget:
         self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
 
         column1 = column(self.select_session, self.select_run,
-                         self.select_model, self.button_validate,
+                         self.select_model, self.div_preproc,
+                         self.checkbox_preproc, self.button_validate,
                          self.div_info)
         column2 = column(self.plot_chronogram)
 
