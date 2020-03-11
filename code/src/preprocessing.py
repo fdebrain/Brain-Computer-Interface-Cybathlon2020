@@ -3,6 +3,18 @@ import scipy.signal
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
+def preprocessing(signal, fs, rereference=False, filt=False, standardize=False):
+    if rereference:
+        signal = rereferencing(signal)
+    if filt:
+        signal = filtering(signal, fs, f_order=2,
+                           f_low=4, f_high=38)
+    if standardize:
+        signal = clipping(signal, sigma=6)
+        signal = standardizing(signal)
+    return signal
+
+
 def get_CAR():
     search_space = {}
     preproc = CommonAverageReference()
@@ -172,3 +184,36 @@ def clipping(X, sigma):
                 X_clipped[trial_idx, channel_idx,
                           X[trial_idx, channel_idx, :] < bottom] = bottom
     return X_clipped
+
+
+def crop_single_trial(x, stride, n_samples, n_crops):
+    """Crop a single trial into n_crops of size crop_len.
+
+    Arguments:
+        x {np.array} -- EEG data of shape (n_channels, n_samples)
+
+    Keyword Arguments:
+        stride {int} -- Interval between starts of two consecutive crops in samples.
+        n_samples {int} -- Time sample for each output crop.
+        n_crops {int} -- Number of desired output crops.
+    """
+    assert stride > 0, 'Stride should be positive !'
+    X_crops = np.stack([x[:, i*stride: i*stride + n_samples]
+                        for i in range(n_crops)], axis=0)
+    return X_crops
+
+
+def cropping(X, y, fs=500, n_crops=50, crop_len=0.5):
+    assert n_crops > 1, 'Use n_crops > 1 !'
+
+    # Cropping parameters
+    n_samples = int(crop_len * fs)  # samples
+    stride = int((X.shape[-1] - n_samples) / (n_crops - 1))  # samples
+    overlap_ratio = 1 - stride / n_samples
+
+    X_crops = np.concatenate([crop_single_trial(x, stride, n_samples, n_crops)
+                              for x in X], axis=0)
+    y_crops = np.concatenate([[y[trial_idx]] * n_crops
+                              for trial_idx in range(len(y))])
+
+    return X_crops, y_crops
