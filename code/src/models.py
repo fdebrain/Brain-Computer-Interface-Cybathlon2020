@@ -91,7 +91,7 @@ def predict(X, model, is_convnet):
 
     # ConvNet case - Adapt input shape & convert probabilities to int
     if is_convnet:
-        y_preds = model.predict(X[:, np.newaxis, :, :])
+        y_preds = model.predict(X[:, :, :, np.newaxis])
         y_preds = np.argmax(y_preds, axis=1)
     else:
         y_preds = model.predict(X)
@@ -99,4 +99,4 @@ def predict(X, model, is_convnet):
     y_pred = Counter(y_preds).most_common()[0][0]
 
     # TODO: If less than n_thresh occurences, return 'Rest' action
-    return y_pred
+    return y_pred, y_preds

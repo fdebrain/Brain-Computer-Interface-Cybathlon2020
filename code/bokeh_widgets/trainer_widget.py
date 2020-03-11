@@ -9,7 +9,8 @@ from bokeh.models import Div, Select, Button, Slider
 from bokeh.models import CheckboxButtonGroup, CheckboxGroup
 from bokeh.layouts import row, column
 
-from src.dataloader import load_session, cropping
+from src.dataloader import load_session
+from src.preprocessing import cropping
 from src.pipeline import get_pipeline, save_json, save_pipeline
 from src.trainer import train
 
@@ -41,7 +42,8 @@ class TrainerWidget:
         config_cn = dict(sigma=6)
         config_bpf = dict(fs=self.fs, f_order=2, f_type='butter',
                           f_low=4, f_high=38)
-        return {'CN': config_cn, 'BPF': config_bpf}
+        config_crop = dict(fs=self.fs, n_crops=8, crop_len=0.5)
+        return {'CN': config_cn, 'BPF': config_bpf, 'Crop': config_crop}
 
     @property
     def should_crop(self):
@@ -141,8 +143,8 @@ class TrainerWidget:
 
         # Cropping
         if self.should_crop:
-            self.X, self.y = cropping(self.X, self.y, self.fs,
-                                      n_crops=8, crop_len=0.5)
+            self.X, self.y = cropping(self.X, self.y,
+                                      **self.preproc_config['Crop'])
 
         if self.is_convnet:
             assert self.should_crop, 'ConvNet requires cropping !'
@@ -170,7 +172,7 @@ class TrainerWidget:
                                                                search_space,
                                                                self.train_mode,
                                                                self.n_iters,
-                                                               n_jobs=1,
+                                                               n_jobs=-1,
                                                                is_convnet=self.is_convnet)
         except Exception:
             logging.info(f'Training failed - {traceback.format_exc()}')

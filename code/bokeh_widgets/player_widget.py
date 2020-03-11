@@ -16,7 +16,7 @@ from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
 from src.pipeline import load_pipeline
-from src.dataloader import cropping
+from src.preprocessing import cropping
 from src.models import predict
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
