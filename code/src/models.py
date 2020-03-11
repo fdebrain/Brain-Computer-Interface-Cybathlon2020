@@ -10,7 +10,7 @@ from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 from .feature_extraction_functions.csp import CSP
 from .feature_extraction_functions.fbcsp import FBCSP
 from .feature_extraction_functions.riemann import Riemann
-from .feature_extraction_functions.convnets import shallowconvnet
+from .feature_extraction_functions.convnets import ShallowConvNetSequential
 
 # Reproducibility
 seed_value = 0
@@ -59,9 +59,9 @@ def get_Riemann_model():
 
 def convnet_wrapper(convnet_name, lr):
     if convnet_name == 'Shallow':
-        convnet = shallowconvnet(n_classes=4,
-                                 n_channels=61,
-                                 n_samples=250)
+        convnet = ShallowConvNetSequential(n_classes=4,
+                                           n_channels=61,
+                                           n_samples=250)
 
     convnet.compile(loss='categorical_crossentropy',
                     optimizer=Adam(lr),
