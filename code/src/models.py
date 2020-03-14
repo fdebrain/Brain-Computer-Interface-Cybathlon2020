@@ -40,8 +40,11 @@ def get_CSP_model():
 
 
 def get_FBCSP_model():
-    search_space = {'classifier__C': (1e-2, 1e3, 'log-uniform')}
-    model = Pipeline([('feat', FBCSP(fs=500, f_type='butter', m=2, k=-1)),
+    search_space = {'feat__regularize_cov': [False, True],
+                    'feat__f_order': (2, 5),
+                    'classifier__C': (1e-2, 1e3, 'log-uniform'), }
+    model = Pipeline([('feat', FBCSP(fs=500, f_type='butter', f_order=2,
+                                     m=2, k=-1, regularize_cov=False)),
                       ('classifier', SVC(kernel='rbf', gamma='scale', C=10))])
     return model, search_space
 
