@@ -7,14 +7,16 @@ from .csp import CSP
 
 
 class FBCSP(BaseEstimator, TransformerMixin):
-    def __init__(self, fs=250, n_classes=4, m=2, f_order=2, f_type='butter', k=-1, freq_bands=[[4, 8], [8, 12], [12, 16], [16, 20], [20, 24], [24, 28], [28, 32], [32, 36], [36, 40]]):
+    def __init__(self, fs=500, n_classes=4, m=2, regularize_cov=False, f_order=2, f_type='butter', k=-1):
         self.fs = fs
         self.m = m
         self.n_classes = n_classes
-        self.freq_bands = freq_bands
+        self.freq_bands = [[4, 8], [8, 12], [12, 16], [16, 20], [20, 24],
+                           [24, 28], [28, 32], [32, 36], [36, 40]]
         self.f_order = f_order
         self.f_type = f_type
         self.k = k
+        self.regularize_cov = regularize_cov
 
     def fit(self, X, y):
         '''
@@ -33,7 +35,7 @@ class FBCSP(BaseEstimator, TransformerMixin):
                                f_type=self.f_type)
 
             # Apply CSP and save block (with trained filters)
-            csp = CSP(n_classes=self.n_classes, m=self.m)
+            csp = CSP(self.n_classes, self.m, self.regularize_cov)
             csp_feats = csp.fit_transform(X_filt, y)  # (n_trials, n_csp)
 
             feats = csp_feats if len(
