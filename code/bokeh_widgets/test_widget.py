@@ -128,13 +128,22 @@ class TestWidget:
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select model {new}')
-        assert new != '', 'Select a model first !'
-        self.pipeline = load_pipeline(self.model_path)
-        self.update_widgets()
+        self.select_model.options = self.available_models
+        if new != '':
+            self.pipeline = load_pipeline(self.model_path)
+
+    def update_widgets(self):
+        self.select_session.options = self.available_sessions
+        self.select_run.options = self.available_runs
+        self.select_model.options = self.available_models
+        self.button_validate.label = 'Validate'
+        self.button_validate.button_type = 'primary'
+        self.chrono_source.data = dict(ts=[], y_true=[], y_pred=[])
 
     def on_validate_start(self):
         assert self.select_run.value != '', 'Select a run first !'
         assert self.select_model.value != '', 'Select a model first !'
+        self.update_widgets()
         self.button_validate.label = 'Validating...'
         self.button_validate.button_type = 'warning'
         curdoc().add_next_tick_callback(self.on_validate)
@@ -167,14 +176,6 @@ class TestWidget:
 
         self.button_validate.label = 'Finished'
         self.button_validate.button_type = 'success'
-
-    def update_widgets(self):
-        self.select_session.options = self.available_sessions
-        self.select_run.options = self.available_runs
-        self.select_model.options = self.available_models
-        self.button_validate.label = 'Validate'
-        self.button_validate.button_type = 'primary'
-        self.chrono_source.data = dict(ts=[], y_true=[], y_pred=[])
 
     def create_widget(self):
         self.select_session = Select(title='Session:')
