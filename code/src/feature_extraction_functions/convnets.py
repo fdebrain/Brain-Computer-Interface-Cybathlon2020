@@ -2,15 +2,135 @@
 from tensorflow.keras.constraints import max_norm
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Input, Flatten, DepthwiseConv2D,
-                                     SpatialDropout2D,
-                                     Lambda, Dense, Activation, Dropout)
+                                     SpatialDropout2D, Lambda, Dense,
+                                     Activation, Dropout)
 from tensorflow.keras.layers import (Conv2D, MaxPooling2D, AveragePooling2D,
-                                     SeparableConv2D)
-from tensorflow.keras.layers import BatchNormalization
+                                     SeparableConv2D, BatchNormalization)
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import Sequential
 import tensorflow.keras.backend as K
 import tensorflow_addons as tfa
+from kerastuner import HyperModel
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import CategoricalCrossentropy
+
+
+def ShallowConvNet(config: dict):
+    """ Keras implementation of the Shallow Convolutional Network as described
+    in Schirrmeister et. al. (2017), Human Brain Mapping."""
+
+    n_classes = config.get('n_classes', 4)
+    n_channels = config.get('n_channels', 61)
+    n_samples = config.get('n_samples', 250)
+    n_filt1 = config.get('n_filt1', 50)
+    k_size1 = config.get('k_size1', 10)
+    n_filt2 = config.get('n_filt2', 80)
+    p_size = config.get('p_size', 150)
+    p_stride = config.get('p_stride', 30)
+    k_reg = config.get('k_reg', 0.01)
+    dropout = config.get('dropout', 0.5)
+    lr = config.get('lr', 1e-3)
+    label_smooth = config.get('label_smooth', 0.1)
+
+    # Define sequential architecture & input
+    model = Sequential()
+    model.add(Input(shape=(n_channels, n_samples, 1)))
+
+    # Temporal filtering
+    model.add(Conv2D(filters=n_filt1,
+                     kernel_size=(1, k_size1),
+                     kernel_regularizer=l2(k_reg),
+                     name='conv1'))
+
+    # Spatial filtering
+    model.add(Conv2D(filters=n_filt2,
+                     kernel_size=(n_channels, 1),
+                     kernel_regularizer=l2(k_reg),
+                     name='conv2'))
+
+    # Normalization
+    model.add(tfa.layers.GroupNormalization())
+    model.add(Activation('elu'))
+
+    # Non-linearity
+    model.add(Lambda(lambda x: K.square(x)))
+    model.add(AveragePooling2D(pool_size=(1, p_size),
+                               strides=(1, p_stride)))
+    model.add(Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
+                                            max_value=10000))))
+
+    model.add(Dropout(rate=dropout))
+    model.add(Flatten())
+    model.add(Dense(n_classes))
+    model.add(Activation('softmax'))
+
+    model.compile(optimizer=Adam(lr),
+                  loss=CategoricalCrossentropy(
+        label_smoothing=label_smooth),
+        metrics=['accuracy'])
+    return model
+
+
+class ShallowConvNetDev(HyperModel):
+    def __init__(self, n_classes, n_channels):
+        self.n_classes = n_classes
+        self.n_channels = n_channels
+        self.n_samples = 250
+
+    def build(self, hp):
+        # Search space
+        n_filt1 = hp.Int('n_filt1', min_value=10, max_value=100,
+                         step=10, default=40)
+        k_size1 = hp.Int('k_size1', min_value=10, max_value=70,
+                         step=10, default=50)
+        n_filt2 = hp.Int('n_filt2', min_value=10, max_value=100,
+                         step=10, default=40)
+        p_size = hp.Int('pool_size', min_value=30, max_value=150,
+                        step=10, default=100)
+        p_stride = hp.Int('pool_stride', min_value=10, max_value=50,
+                          step=10, default=30)
+        k_reg = hp.Choice('k_reg', values=[0.0, 1e-2, 1e-1])
+        dropout = hp.Choice('dropout', values=[0.25, 0.5, 0.75])
+        lr = hp.Choice('lr', values=[1e-2, 1e-3, 1e-4])
+        label_smooth = hp.Choice('label_smooth', values=[0.0, 0.1, 0.2])
+
+        # Define sequential architecture & input
+        model = Sequential()
+        model.add(Input(shape=(self.n_channels, self.n_samples, 1)))
+
+        # Temporal filtering
+        model.add(Conv2D(filters=n_filt1,
+                         kernel_size=(1, k_size1),
+                         kernel_regularizer=l2(k_reg),
+                         name='conv1'))
+
+        # Spatial filtering
+        model.add(Conv2D(filters=n_filt2,
+                         kernel_size=(self.n_channels, 1),
+                         kernel_regularizer=l2(k_reg),
+                         name='conv2'))
+
+        # Normalization
+        model.add(tfa.layers.GroupNormalization())
+        model.add(Activation('elu'))
+
+        # Non-linearity
+        model.add(Lambda(lambda x: K.square(x)))
+        model.add(AveragePooling2D(pool_size=(1, p_size),
+                                   strides=(1, p_stride)))
+        model.add(Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
+                                                max_value=10000))))
+
+        model.add(Dropout(rate=dropout))
+        model.add(Flatten())
+        model.add(Dense(self.n_classes))
+        model.add(Activation('softmax'))
+
+        model.compile(optimizer=Adam(lr),
+                      loss=CategoricalCrossentropy(
+                          label_smoothing=label_smooth),
+                      metrics=['accuracy'])
+        return model
 
 
 def EEGNet(n_classes=4, n_channels=61, n_samples=250,
@@ -116,129 +236,6 @@ def DeepConvNet(n_classes=4, n_channels=61, n_samples=250,
 
     flatten = Flatten()(block4)
     dense = Dense(n_classes, kernel_constraint=max_norm(0.5))(flatten)
-    softmax = Activation('softmax')(dense)
-
-    return Model(inputs=input_main, outputs=softmax)
-
-
-def ShallowConvNetSequential(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01):
-    model = Sequential()
-    model.add(Conv2D(filters=40, kernel_size=(1, 50),
-                     input_shape=(n_channels, n_samples, 1),
-                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
-                     kernel_regularizer=l2(l2_reg),
-                     name='conv1'))
-    model.add(Conv2D(filters=40, kernel_size=(n_channels, 1),
-                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
-                     kernel_regularizer=l2(l2_reg),
-                     name='conv2'))
-    model.add(BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1))
-    model.add(Activation('elu'))
-
-    # Similar to power band feature extraction (log-variance)
-    model.add(Lambda(lambda x: K.square(x)))
-    model.add(AveragePooling2D(pool_size=(1, 150),
-                               strides=(1, 30)))
-    model.add(Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
-                                            max_value=10000))))
-
-    # Classifier
-    model.add(Dropout(dropoutRate))
-    model.add(Flatten())
-    model.add(Dense(n_classes,
-                    kernel_constraint=max_norm(0.5),
-                    name='fc'))
-
-    # Probabilities
-    model.add(Activation('softmax'))
-    return model
-
-
-def ShallowConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01):
-    """ Keras implementation of the Shallow Convolutional Network as described
-    in Schirrmeister et. al. (2017), Human Brain Mapping."""
-    def square(x):
-        return K.square(x)
-
-    def log(x):
-        return K.log(K.clip(x, min_value=1e-7, max_value=10000))
-
-    # start the model
-    input_main = Input((n_channels, n_samples, 1))
-
-    # Temporal filtering
-    block1 = Conv2D(filters=80,
-                    kernel_size=(1, 10),
-                    input_shape=(n_channels, n_samples, 1),
-                    kernel_constraint=max_norm(2., axis=(0, 1, 2)),
-                    kernel_regularizer=l2(l2_reg),
-                    name='conv1')(input_main)
-
-    # Spatial filtering
-    block1 = Conv2D(filters=20, kernel_size=(n_channels, 1),
-                    kernel_constraint=max_norm(2., axis=(0, 1, 2)),
-                    kernel_regularizer=l2(l2_reg),
-                    name='conv2')(block1)
-
-    # Normalization before non-linearity
-    block1 = BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1)(block1)
-    block1 = Activation('elu')(block1)
-
-    # Similar to power band feature extraction (log-variance)
-    block1 = Lambda(lambda x: square(x))(block1)
-    block1 = AveragePooling2D(pool_size=(1, 100),
-                              strides=(1, 40))(block1)
-    block1 = Lambda(lambda x: log(x))(block1)
-
-    # Classifier
-    block1 = Dropout(dropoutRate)(block1)
-    flatten = Flatten()(block1)
-    dense = Dense(n_classes,
-                  kernel_constraint=max_norm(0.5),
-                  name='fc')(flatten)
-
-    # Probabilities
-    softmax = Activation('softmax')(dense)
-
-    return Model(inputs=input_main, outputs=softmax)
-
-
-def DevConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01, activation='elu', initializer='glorot_uniform', bn=True, f_size=40, pool_size=150, pool_stride=30):
-    input_main = Input((n_channels, n_samples, 1))
-
-    # Temporal filtering
-    block1 = Conv2D(f_size, kernel_size=(1, 50),
-                    input_shape=(n_channels, n_samples, 1),
-                    kernel_constraint=max_norm(2., axis=(0, 1, 2)),
-                    kernel_regularizer=l2(l2_reg),
-                    name='conv1')(input_main)
-
-    # Spatial filtering
-    block1 = Conv2D(f_size, kernel_size=(n_channels, 1),
-                    kernel_constraint=max_norm(2., axis=(0, 1, 2)),
-                    kernel_regularizer=l2(l2_reg),
-                    name='conv2')(block1)
-
-    # Normalization before non-linearity
-    block1 = tfa.layers.GroupNormalization()(block1)
-    # block1 = BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1)(block1)
-    block1 = Activation(activation)(block1)  # Changed elu to relu
-
-    # Similar to power band feature extraction (log-variance)
-    block1 = Lambda(lambda x: K.square(x))(block1)
-    block1 = AveragePooling2D(pool_size=(1, pool_size),
-                              strides=(1, pool_stride))(block1)
-    block1 = Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
-                                           max_value=10000)))(block1)
-
-    # Classifier
-    block1 = Dropout(dropoutRate)(block1)
-    flatten = Flatten()(block1)
-    dense = Dense(n_classes,
-                  kernel_constraint=max_norm(0.5),
-                  name='fc')(flatten)
-
-    # Probabilities
     softmax = Activation('softmax')(dense)
 
     return Model(inputs=input_main, outputs=softmax)

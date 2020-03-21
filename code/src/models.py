@@ -4,13 +4,12 @@ from collections import Counter
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 
 from .feature_extraction_functions.csp import CSP
 from .feature_extraction_functions.fbcsp import FBCSP
 from .feature_extraction_functions.riemann import Riemann
-from .feature_extraction_functions.convnets import ShallowConvNetSequential
+from .feature_extraction_functions.convnets import ShallowConvNet
 
 # Reproducibility
 seed_value = 0
@@ -56,27 +55,15 @@ def get_Riemann_model():
                     'classifier__degree': (1, 5),
                     'classifier__C': (1e-1, 1e3, 'log-uniform')}
     model = Pipeline([('feat', Riemann(fs=500)),
-                      ('classifier', SVC(kernel='linear', gamma='scale', C=10))])
+                      ('classifier', SVC(kernel='linear', gamma='scale',
+                                         C=10))])
     return model, search_space
-
-
-def convnet_wrapper(convnet_name, lr):
-    if convnet_name == 'Shallow':
-        convnet = ShallowConvNetSequential(n_classes=4,
-                                           n_channels=61,
-                                           n_samples=250)
-
-    convnet.compile(loss='categorical_crossentropy',
-                    optimizer=Adam(lr),
-                    metrics=['accuracy'])
-    return convnet
 
 
 def get_ConvNet_model():
     search_space = {}
-    model = KerasClassifier(convnet_wrapper, epochs=500,
-                            batch_size=16, lr=1e-3,
-                            convnet_name='Shallow')
+    model = KerasClassifier(ShallowConvNet, epochs=500,
+                            batch_size=16, lr=1e-3)
     return model, search_space
 
 
