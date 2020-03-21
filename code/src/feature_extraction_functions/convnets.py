@@ -1,5 +1,4 @@
 # Source: https://github.com/robintibor/arl-eegmodels/blob/master/EEGModels.py
-
 from tensorflow.keras.constraints import max_norm
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Input, Flatten, DepthwiseConv2D,
@@ -11,11 +10,12 @@ from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import Sequential
 import tensorflow.keras.backend as K
+import tensorflow_addons as tfa
 
 
 def EEGNet(n_classes=4, n_channels=61, n_samples=250,
-           dropoutRate=0.5, kernLength=64, F1=8,
-           D=2, F2=16, dropoutType='Dropout', undersample=1):
+           dropoutRate=0.5, kernLength=128, F1=8,
+           D=2, F2=16, dropoutType='Dropout'):
     """ Keras Implementation of EEGNet (https://arxiv.org/abs/1611.08024) """
 
     if dropoutType == 'SpatialDropout2D':
@@ -29,7 +29,7 @@ def EEGNet(n_classes=4, n_channels=61, n_samples=250,
     input1 = Input(shape=(n_channels, n_samples, 1))
 
     # Temporal convolution to learn frequency filters (linear activation)
-    block1 = Conv2D(F1//undersample, (1, kernLength//undersample), padding='same',
+    block1 = Conv2D(F1, (1, kernLength), padding='same',
                     input_shape=(n_channels, n_samples, 1),
                     use_bias=False)(input1)
 
@@ -39,7 +39,7 @@ def EEGNet(n_classes=4, n_channels=61, n_samples=250,
     # Depthwise convolution to learn spatial filters (linear activation)
     block1 = DepthwiseConv2D((n_channels, 1),
                              use_bias=False,
-                             # Defines nbr of output filters (D*F1//undersample)
+                             # Defines nbr of output filters (D*F1)
                              depth_multiplier=D,
                              padding='valid',
                              depthwise_constraint=max_norm(1.))(block1)
@@ -47,11 +47,11 @@ def EEGNet(n_classes=4, n_channels=61, n_samples=250,
     block1 = Activation('elu')(block1)
 
     # Temporal average pooling
-    block1 = AveragePooling2D((1, 4//undersample))(block1)
+    block1 = AveragePooling2D((1, 8))(block1)
     block1 = dropoutType(dropoutRate)(block1)
 
     # Separable convolution (linear activation)
-    block2 = SeparableConv2D(F2//undersample,
+    block2 = SeparableConv2D(F2,
                              (1, 16),
                              use_bias=False,
                              padding='same')(block1)
@@ -59,7 +59,7 @@ def EEGNet(n_classes=4, n_channels=61, n_samples=250,
     block2 = Activation('elu')(block2)
 
     # Temporal average pooling
-    block2 = AveragePooling2D((1, 8//undersample))(block2)
+    block2 = AveragePooling2D((1, 16))(block2)
     block2 = dropoutType(dropoutRate)(block2)
 
     flatten = Flatten(name='flatten')(block2)
@@ -73,13 +73,13 @@ def EEGNet(n_classes=4, n_channels=61, n_samples=250,
 
 
 def DeepConvNet(n_classes=4, n_channels=61, n_samples=250,
-                dropoutRate=0.5, undersample=1, l2_reg=0.01):
+                dropoutRate=0.5, l2_reg=0.01):
     """ Keras implementation of the Deep Convolutional Network as described in
     Schirrmeister et. al. (2017), Human Brain Mapping."""
 
     # start the model
     input_main = Input((n_channels, n_samples, 1))
-    block1 = Conv2D(25, (1, 10//undersample),
+    block1 = Conv2D(filters=25, strides=(1, 10),
                     input_shape=(n_channels, n_samples, 1),
                     kernel_constraint=max_norm(2.))(input_main)
     block1 = Conv2D(25, (n_channels, 1),
@@ -90,7 +90,7 @@ def DeepConvNet(n_classes=4, n_channels=61, n_samples=250,
     block1 = MaxPooling2D(pool_size=(1, 3), strides=(1, 3))(block1)
     block1 = Dropout(dropoutRate)(block1)
 
-    block2 = Conv2D(50, (1, 10 // undersample),
+    block2 = Conv2D(filters=50, kernel_size=(1, 10),
                     kernel_constraint=max_norm(2.),
                     kernel_regularizer=l2(l2_reg))(block1)
     block2 = BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1)(block2)
@@ -98,7 +98,7 @@ def DeepConvNet(n_classes=4, n_channels=61, n_samples=250,
     block2 = MaxPooling2D(pool_size=(1, 3), strides=(1, 3))(block2)
     block2 = Dropout(dropoutRate)(block2)
 
-    block3 = Conv2D(100, (1, 10 // undersample),
+    block3 = Conv2D(filters=100, kernel_size=(1, 10),
                     kernel_constraint=max_norm(2.),
                     kernel_regularizer=l2(l2_reg))(block2)
     block3 = BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1)(block3)
@@ -106,7 +106,7 @@ def DeepConvNet(n_classes=4, n_channels=61, n_samples=250,
     block3 = MaxPooling2D(pool_size=(1, 3), strides=(1, 3))(block3)
     block3 = Dropout(dropoutRate)(block3)
 
-    block4 = Conv2D(200, (1, 10 // undersample),
+    block4 = Conv2D(filters=200, kernel_size=(1, 10),
                     kernel_constraint=max_norm(2.),
                     kernel_regularizer=l2(l2_reg))(block3)
     block4 = BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1)(block4)
@@ -121,14 +121,14 @@ def DeepConvNet(n_classes=4, n_channels=61, n_samples=250,
     return Model(inputs=input_main, outputs=softmax)
 
 
-def ShallowConvNetSequential(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01, undersample=1):
+def ShallowConvNetSequential(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01):
     model = Sequential()
-    model.add(Conv2D(40, (1, 50//undersample),
+    model.add(Conv2D(filters=40, kernel_size=(1, 50),
                      input_shape=(n_channels, n_samples, 1),
                      kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                      kernel_regularizer=l2(l2_reg),
                      name='conv1'))
-    model.add(Conv2D(40, (n_channels, 1),
+    model.add(Conv2D(filters=40, kernel_size=(n_channels, 1),
                      kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                      kernel_regularizer=l2(l2_reg),
                      name='conv2'))
@@ -137,8 +137,8 @@ def ShallowConvNetSequential(n_classes=4, n_channels=61, n_samples=250, dropoutR
 
     # Similar to power band feature extraction (log-variance)
     model.add(Lambda(lambda x: K.square(x)))
-    model.add(AveragePooling2D(pool_size=(1, 150 // undersample),
-                               strides=(1, 30//undersample)))
+    model.add(AveragePooling2D(pool_size=(1, 150),
+                               strides=(1, 30)))
     model.add(Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
                                             max_value=10000))))
 
@@ -154,7 +154,7 @@ def ShallowConvNetSequential(n_classes=4, n_channels=61, n_samples=250, dropoutR
     return model
 
 
-def ShallowConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01, undersample=1):
+def ShallowConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01):
     """ Keras implementation of the Shallow Convolutional Network as described
     in Schirrmeister et. al. (2017), Human Brain Mapping."""
     def square(x):
@@ -167,14 +167,15 @@ def ShallowConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l
     input_main = Input((n_channels, n_samples, 1))
 
     # Temporal filtering
-    block1 = Conv2D(40, (1, 50//undersample),
+    block1 = Conv2D(filters=80,
+                    kernel_size=(1, 10),
                     input_shape=(n_channels, n_samples, 1),
                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                     kernel_regularizer=l2(l2_reg),
                     name='conv1')(input_main)
 
     # Spatial filtering
-    block1 = Conv2D(40, (n_channels, 1),
+    block1 = Conv2D(filters=20, kernel_size=(n_channels, 1),
                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                     kernel_regularizer=l2(l2_reg),
                     name='conv2')(block1)
@@ -184,11 +185,10 @@ def ShallowConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l
     block1 = Activation('elu')(block1)
 
     # Similar to power band feature extraction (log-variance)
-    block1 = Lambda(lambda x: K.square(x))(block1)
-    block1 = AveragePooling2D(pool_size=(1, 150 // undersample),
-                              strides=(1, 30 // undersample))(block1)
-    block1 = Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
-                                           max_value=10000)))(block1)
+    block1 = Lambda(lambda x: square(x))(block1)
+    block1 = AveragePooling2D(pool_size=(1, 100),
+                              strides=(1, 40))(block1)
+    block1 = Lambda(lambda x: log(x))(block1)
 
     # Classifier
     block1 = Dropout(dropoutRate)(block1)
@@ -203,52 +203,40 @@ def ShallowConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l
     return Model(inputs=input_main, outputs=softmax)
 
 
-def DevConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01, undersample=1, activation='elu', initializer='glorot_uniform', bn=True, dropout=Dropout):
-    def square(x):
-        return K.square(x)
-
-    def log(x):
-        return K.log(K.clip(x, min_value=1e-7, max_value=10000))
-
-    # start the model
+def DevConvNet(n_classes=4, n_channels=61, n_samples=250, dropoutRate=0.5, l2_reg=0.01, activation='elu', initializer='glorot_uniform', bn=True, f_size=40, pool_size=150, pool_stride=30):
     input_main = Input((n_channels, n_samples, 1))
 
     # Temporal filtering
-    block1 = Conv2D(40, (1, 25//undersample),
-                    kernel_initializer=initializer,
+    block1 = Conv2D(f_size, kernel_size=(1, 50),
                     input_shape=(n_channels, n_samples, 1),
                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                     kernel_regularizer=l2(l2_reg),
-                    use_bias=False,  # New
                     name='conv1')(input_main)
 
     # Spatial filtering
-    block1 = Conv2D(40, (n_channels, 1),
-                    kernel_initializer=initializer,
+    block1 = Conv2D(f_size, kernel_size=(n_channels, 1),
                     kernel_constraint=max_norm(2., axis=(0, 1, 2)),
                     kernel_regularizer=l2(l2_reg),
-                    use_bias=False,  # New
                     name='conv2')(block1)
 
     # Normalization before non-linearity
-    if bn:
-        block1 = BatchNormalization(
-            axis=1, epsilon=1e-05, momentum=0.1)(block1)
-    block1 = Activation(activation)(block1)
+    block1 = tfa.layers.GroupNormalization()(block1)
+    # block1 = BatchNormalization(axis=1, epsilon=1e-05, momentum=0.1)(block1)
+    block1 = Activation(activation)(block1)  # Changed elu to relu
 
     # Similar to power band feature extraction (log-variance)
     block1 = Lambda(lambda x: K.square(x))(block1)
-    block1 = AveragePooling2D(pool_size=(1, 75 // undersample),
-                              strides=(1, 15//undersample))(block1)
-    block1 = Lambda(lambda x: K.log(
-        K.clip(x, min_value=1e-7, max_value=10000)))(block1)
+    block1 = AveragePooling2D(pool_size=(1, pool_size),
+                              strides=(1, pool_stride))(block1)
+    block1 = Lambda(lambda x: K.log(K.clip(x, min_value=1e-7,
+                                           max_value=10000)))(block1)
 
     # Classifier
-    block1 = dropout(dropoutRate)(block1)
+    block1 = Dropout(dropoutRate)(block1)
     flatten = Flatten()(block1)
     dense = Dense(n_classes,
-                  kernel_initializer=initializer,
-                  kernel_constraint=max_norm(0.5), name='fc')(flatten)
+                  kernel_constraint=max_norm(0.5),
+                  name='fc')(flatten)
 
     # Probabilities
     softmax = Activation('softmax')(dense)
