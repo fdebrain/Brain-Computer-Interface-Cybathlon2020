@@ -14,6 +14,10 @@ from kerastuner import HyperModel
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import CategoricalCrossentropy
 
+seed_value = 0
+tf.random.set_seed(seed_value)
+np.random.seed(seed_value)
+
 
 def ShallowConvNet(config: dict = {}):
     """ Keras implementation of the Shallow Convolutional Network as described
@@ -27,7 +31,7 @@ def ShallowConvNet(config: dict = {}):
     n_filt2 = config.get('n_filt2', 80)
     p_size = config.get('p_size', 150)
     p_stride = config.get('p_stride', 30)
-    k_reg = config.get('k_reg', 0.01)
+    k_reg = config.get('k_reg', 0.001)
     dropout = config.get('dropout', 0.5)
     lr = config.get('lr', 1e-3)
     label_smooth = config.get('label_smooth', 0.1)
