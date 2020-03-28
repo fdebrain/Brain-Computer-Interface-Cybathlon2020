@@ -1,18 +1,19 @@
 # Source: https://github.com/robintibor/arl-eegmodels/blob/master/EEGModels.py
+import numpy as np
+import tensorflow as tf
 from tensorflow.keras.constraints import max_norm
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.layers import (Input, Flatten, DepthwiseConv2D,
                                      SpatialDropout2D, Lambda, Dense,
                                      Activation, Dropout)
 from tensorflow.keras.layers import (Conv2D, MaxPooling2D, AveragePooling2D,
                                      SeparableConv2D, BatchNormalization)
 from tensorflow.keras.regularizers import l2
-from tensorflow.keras.models import Sequential
 import tensorflow.keras.backend as K
-import tensorflow_addons as tfa
-from kerastuner import HyperModel
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import CategoricalCrossentropy
+import tensorflow_addons as tfa
+from kerastuner import HyperModel
 
 seed_value = 0
 tf.random.set_seed(seed_value)
