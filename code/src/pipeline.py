@@ -4,6 +4,7 @@ import json
 import pickle
 
 from sklearn.pipeline import Pipeline
+from tensorflow.keras.models import load_model
 
 from .preprocessing import get_preprocessor
 from .feature_extraction_functions.convnets import ShallowConvNet
@@ -40,8 +41,7 @@ def load_pipeline(model_path):
         unpickle = open(model_path, 'rb')
         model = pickle.load(unpickle)
     elif model_path.suffix == '.h5':
-        model = ShallowConvNet()
-        model.load_weights(str(model_path))
+        model = load_model(str(model_path))
         logging.info(model.summary())
     else:
         raise ValueError('Model format not recognized !')
