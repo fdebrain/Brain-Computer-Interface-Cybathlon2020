@@ -1,6 +1,5 @@
 from collections import Counter
 
-
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
@@ -67,26 +66,28 @@ def get_ConvNet_model():
     return model, search_space
 
 
-def predict(X, model, is_convnet):
+def predict(X, models, is_convnet):
     """Return prediction of a trained model given input EEG data.
 
     Arguments:htop
         X {np.array} -- EEG array of shape (n_trials, n_channels, n_samples)
-        model {object} -- Trained model
+        models {List[object]} -- Trained model
         is_convnet {bool} -- Model is convNet
 
     Returns:
         np.array -- Array of predictions
     """
+    if not isinstance(models, list):
+        models = [models]
 
-    # ConvNet case - Adapt input shape & convert probabilities to int
     if is_convnet:
-        y_preds = model.predict(X[:, :, :, np.newaxis])
-        y_preds = np.argmax(y_preds, axis=1)
+        # ConvNet case - Adapt input shape & convert probabilities to int
+        y_prob = [model.predict(X[:, :, :, np.newaxis])
+                  for model in models]
+        y_probs = np.sum(y_prob, axis=0)
+        y_preds = np.argmax(y_probs, axis=1)
     else:
-        y_preds = model.predict(X)
+        y_preds = np.concatenate([model.predict(X) for model in models])
 
     y_pred = Counter(y_preds).most_common()[0][0]
-
-    # TODO: If less than n_thresh occurences, return 'Rest' action
-    return y_pred, y_preds
+    return y_pred

@@ -65,6 +65,11 @@ class TestWidget:
         return 'Standardize' in self.selected_preproc
 
     @property
+    def selected_settings(self):
+        active = self.checkbox_settings.active
+        return [self.checkbox_settings.labels[i] for i in active]
+
+    @property
     def available_models(self):
         ml_models = [p.name for p in self.models_path.glob('*.pkl')]
         dl_models = [p.name for p in self.models_path.glob('*.h5')]
@@ -130,7 +135,14 @@ class TestWidget:
         logging.info(f'Select model {new}')
         self.select_model.options = self.available_models
         if new != '':
-            self.pipeline = load_pipeline(self.model_path)
+            if 'Ensemble' in self.selected_settings:
+                self.models_name = [f'model{i}.h5'
+                                    for i in [0, 1, 2]]
+                logging.info(f'Loading ensemble of models {self.models_name}')
+                self.pipeline = [load_pipeline(self.models_path / name)
+                                 for name in self.models_name]
+            else:
+                self.pipeline = load_pipeline(self.model_path)
 
     def update_widgets(self):
         self.select_session.options = self.available_sessions
@@ -164,7 +176,8 @@ class TestWidget:
             epochs, _ = cropping(epoch, [groundtruth], self.fs,
                                  n_crops=10, crop_len=0.5)
 
-            y_pred, _ = predict(epochs, self.pipeline, self.is_convnet)
+            # Predict
+            y_pred = predict(epochs, self.pipeline, self.is_convnet)
 
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.gd2pred[groundtruth]],
@@ -197,6 +210,8 @@ class TestWidget:
         self.slider_win_len = Slider(start=0.5, end=4, value=1,
                                      step=0.25, title='Win len (s)')
 
+        self.checkbox_settings = CheckboxButtonGroup(labels=['Ensemble'])
+
         self.button_validate = Button(label='Validate',
                                       button_type='primary')
         self.button_validate.on_click(self.on_validate_start)
@@ -220,7 +235,8 @@ class TestWidget:
 
         column1 = column(self.select_session, self.select_run,
                          self.select_model, self.div_preproc,
-                         self.checkbox_preproc, self.button_validate,
+                         self.checkbox_preproc, self.checkbox_settings,
+                         self.button_validate,
                          self.div_info)
         column2 = column(self.plot_chronogram)
 
