@@ -25,7 +25,7 @@ The `data_path` parameter should be adapted to your path once your Drive has bee
 Create a local copy of the notebooks before running them and change runtime type to GPU (runtime -> change runtime type).
 
 
-![Game Environment](Reports/game_env.png)
+![Game Environment](Reports/images/game_env.png)
 
 
 ## 1. Installation
