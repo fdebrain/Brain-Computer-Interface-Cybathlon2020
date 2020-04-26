@@ -1,16 +1,14 @@
 from collections import Counter
 
-
 import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 
 from .feature_extraction_functions.csp import CSP
 from .feature_extraction_functions.fbcsp import FBCSP
 from .feature_extraction_functions.riemann import Riemann
-from .feature_extraction_functions.convnets import ShallowConvNetSequential
+from .feature_extraction_functions.convnets import ShallowConvNet
 
 # Reproducibility
 seed_value = 0
@@ -56,50 +54,40 @@ def get_Riemann_model():
                     'classifier__degree': (1, 5),
                     'classifier__C': (1e-1, 1e3, 'log-uniform')}
     model = Pipeline([('feat', Riemann(fs=500)),
-                      ('classifier', SVC(kernel='linear', gamma='scale', C=10))])
+                      ('classifier', SVC(kernel='linear', gamma='scale',
+                                         C=10))])
     return model, search_space
-
-
-def convnet_wrapper(convnet_name, lr):
-    if convnet_name == 'Shallow':
-        convnet = ShallowConvNetSequential(n_classes=4,
-                                           n_channels=61,
-                                           n_samples=250)
-
-    convnet.compile(loss='categorical_crossentropy',
-                    optimizer=Adam(lr),
-                    metrics=['accuracy'])
-    return convnet
 
 
 def get_ConvNet_model():
     search_space = {}
-    model = KerasClassifier(convnet_wrapper, epochs=500,
-                            batch_size=16, lr=1e-3,
-                            convnet_name='Shallow')
+    model = KerasClassifier(ShallowConvNet, epochs=500,
+                            batch_size=16, lr=1e-3)
     return model, search_space
 
 
-def predict(X, model, is_convnet):
+def predict(X, models, is_convnet):
     """Return prediction of a trained model given input EEG data.
 
     Arguments:htop
         X {np.array} -- EEG array of shape (n_trials, n_channels, n_samples)
-        model {object} -- Trained model
+        models {List[object]} -- Trained model
         is_convnet {bool} -- Model is convNet
 
     Returns:
         np.array -- Array of predictions
     """
+    if not isinstance(models, list):
+        models = [models]
 
-    # ConvNet case - Adapt input shape & convert probabilities to int
     if is_convnet:
-        y_preds = model.predict(X[:, :, :, np.newaxis])
-        y_preds = np.argmax(y_preds, axis=1)
+        # ConvNet case - Adapt input shape & convert probabilities to int
+        y_prob = [model.predict(X[:, :, :, np.newaxis])
+                  for model in models]
+        y_probs = np.sum(y_prob, axis=0)
+        y_preds = np.argmax(y_probs, axis=1)
     else:
-        y_preds = model.predict(X)
+        y_preds = np.concatenate([model.predict(X) for model in models])
 
     y_pred = Counter(y_preds).most_common()[0][0]
-
-    # TODO: If less than n_thresh occurences, return 'Rest' action
-    return y_pred, y_preds
+    return y_pred

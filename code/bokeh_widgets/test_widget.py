@@ -65,6 +65,11 @@ class TestWidget:
         return 'Standardize' in self.selected_preproc
 
     @property
+    def selected_settings(self):
+        active = self.checkbox_settings.active
+        return [self.checkbox_settings.labels[i] for i in active]
+
+    @property
     def available_models(self):
         ml_models = [p.name for p in self.models_path.glob('*.pkl')]
         dl_models = [p.name for p in self.models_path.glob('*.h5')]
@@ -128,13 +133,29 @@ class TestWidget:
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select model {new}')
-        assert new != '', 'Select a model first !'
-        self.pipeline = load_pipeline(self.model_path)
-        self.update_widgets()
+        self.select_model.options = self.available_models
+        if new != '':
+            if 'Ensemble' in self.selected_settings:
+                self.models_name = [f'model{i}.h5'
+                                    for i in [0, 1, 2]]
+                logging.info(f'Loading ensemble of models {self.models_name}')
+                self.pipeline = [load_pipeline(self.models_path / name)
+                                 for name in self.models_name]
+            else:
+                self.pipeline = load_pipeline(self.model_path)
+
+    def update_widgets(self):
+        self.select_session.options = self.available_sessions
+        self.select_run.options = self.available_runs
+        self.select_model.options = self.available_models
+        self.button_validate.label = 'Validate'
+        self.button_validate.button_type = 'primary'
+        self.chrono_source.data = dict(ts=[], y_true=[], y_pred=[])
 
     def on_validate_start(self):
         assert self.select_run.value != '', 'Select a run first !'
         assert self.select_model.value != '', 'Select a model first !'
+        self.update_widgets()
         self.button_validate.label = 'Validating...'
         self.button_validate.button_type = 'warning'
         curdoc().add_next_tick_callback(self.on_validate)
@@ -155,7 +176,8 @@ class TestWidget:
             epochs, _ = cropping(epoch, [groundtruth], self.fs,
                                  n_crops=10, crop_len=0.5)
 
-            y_pred, _ = predict(epochs, self.pipeline, self.is_convnet)
+            # Predict
+            y_pred = predict(epochs, self.pipeline, self.is_convnet)
 
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.gd2pred[groundtruth]],
@@ -167,14 +189,6 @@ class TestWidget:
 
         self.button_validate.label = 'Finished'
         self.button_validate.button_type = 'success'
-
-    def update_widgets(self):
-        self.select_session.options = self.available_sessions
-        self.select_run.options = self.available_runs
-        self.select_model.options = self.available_models
-        self.button_validate.label = 'Validate'
-        self.button_validate.button_type = 'primary'
-        self.chrono_source.data = dict(ts=[], y_true=[], y_pred=[])
 
     def create_widget(self):
         self.select_session = Select(title='Session:')
@@ -195,6 +209,8 @@ class TestWidget:
 
         self.slider_win_len = Slider(start=0.5, end=4, value=1,
                                      step=0.25, title='Win len (s)')
+
+        self.checkbox_settings = CheckboxButtonGroup(labels=['Ensemble'])
 
         self.button_validate = Button(label='Validate',
                                       button_type='primary')
@@ -219,7 +235,8 @@ class TestWidget:
 
         column1 = column(self.select_session, self.select_run,
                          self.select_model, self.div_preproc,
-                         self.checkbox_preproc, self.button_validate,
+                         self.checkbox_preproc, self.checkbox_settings,
+                         self.button_validate,
                          self.div_info)
         column2 = column(self.plot_chronogram)
 
