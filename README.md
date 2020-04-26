@@ -79,3 +79,5 @@ master-thesis-cybathlon
 ## 3. Launching the visual interface
 - `conda activate cybathlon`
 - `bokeh serve bokeh_dashboard --show`
+
+![Player interface](Reports/images/player_lsl_predict.png)
