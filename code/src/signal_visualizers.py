@@ -20,7 +20,7 @@ def temporal_plot(X, fs=250, title='Amplitude', fig=None, ax_idx=0):
         ax = fig.get_axes()[ax_idx]
     else:
         fig, ax = plt.subplots()
-    
+
     assert len(X.shape) == 1, "X should be of shape (n_samples,)."
     ax.plot(X)
     ax.set_xlabel('Time [s]')
@@ -31,6 +31,7 @@ def temporal_plot(X, fs=250, title='Amplitude', fig=None, ax_idx=0):
     ax.set_xticks(tick_locs)
     ax.set_xticklabels(tick_lbls)
     return fig
+
 
 def amplitude2D_plot(X, fs=250, y_label='Trials', vmax=10, title='Voltage amplitude', fig=None, ax_idx=0):
     ''' Plot signal amplitude trial- or channel-wise in temporal space (trials/channels vs time).
@@ -50,18 +51,21 @@ def amplitude2D_plot(X, fs=250, y_label='Trials', vmax=10, title='Voltage amplit
         ax = fig.get_axes()[ax_idx]
     else:
         fig, ax = plt.subplots()
-    
-    assert y_label in ['Trials', 'Channels'], "Please choose y_label among {'Trials', 'Channels'}."
 
-    if y_label=='Trials':
+    assert y_label in [
+        'Trials', 'Channels'], "Please choose y_label among {'Trials', 'Channels'}."
+
+    if y_label == 'Trials':
         assert len(X.shape) == 2, "X should be of shape (n_trials, n_samples)."
-        ax.imshow(X, aspect='auto', cmap='magma', vmin=-vmax, vmax=vmax, origin='lower')
+        ax.imshow(X, aspect='auto', cmap='magma',
+                  vmin=-vmax, vmax=vmax, origin='lower')
         ax.set_ylabel('Trials')
 
     else:
         assert len(X.shape) == 2, "X should be of shape (n_channels, n_samples)."
-        ax.imshow(X, aspect='auto', cmap='magma', vmin=-vmax, vmax=vmax, origin='lower')
-        ax.set_ylabel('Channels')        
+        ax.imshow(X, aspect='auto', cmap='magma',
+                  vmin=-vmax, vmax=vmax, origin='lower')
+        ax.set_ylabel('Channels')
 
     ax.set_xlabel('Time [s]')
     tick_locs = np.arange(0, X.shape[-1], fs)
@@ -70,6 +74,7 @@ def amplitude2D_plot(X, fs=250, y_label='Trials', vmax=10, title='Voltage amplit
     ax.set_xticklabels(tick_lbls)
     ax.set_title(title)
     return fig
+
 
 def psd_plot(X, fs=250, nperseg=250, title='PSD', fig=None, ax_idx=0):
     ''' Plot power spectral frequency (PSD vs frequency).
@@ -87,7 +92,7 @@ def psd_plot(X, fs=250, nperseg=250, title='PSD', fig=None, ax_idx=0):
         ax = fig.get_axes()[ax_idx]
     else:
         fig, ax = plt.subplots()
-        
+
     assert len(X.shape) == 1, "X should be of shape (n_samples,)."
     f, Pxx_den = scipy.signal.welch(X, fs, nperseg=nperseg)
     ax.semilogy(f, Pxx_den)
@@ -96,8 +101,9 @@ def psd_plot(X, fs=250, nperseg=250, title='PSD', fig=None, ax_idx=0):
     ax.set_title(title)
     return fig
 
+
 def stft_plot(X, fs=250, f_min=None, f_max=None, nperseg=70, r_nover=0.99, r_nfft=8, title='STFT', fig=None, ax_idx=0):
-    ''' Plot signal in frequency space (frequency vs time) to visualize the change of a 
+    ''' Plot signal in frequency space (frequency vs time) to visualize the change of a
     nonstationary signal's frequency content over time.
     Input:
         - X: Signal to plot (numpy array of shape (n_samples,)).
@@ -118,7 +124,8 @@ def stft_plot(X, fs=250, f_min=None, f_max=None, nperseg=70, r_nover=0.99, r_nff
         fig, ax = plt.subplots()
 
     assert len(X.shape) == 1, "X should be of shape (n_samples,)."
-    f, t, Sxx = scipy.signal.spectrogram(X, fs, nperseg=nperseg, nfft=r_nfft*nperseg, noverlap=r_nover*nperseg)
+    f, t, Sxx = scipy.signal.spectrogram(
+        X, fs, nperseg=nperseg, nfft=r_nfft*nperseg, noverlap=r_nover*nperseg)
     #f, t, Sxx = scipy.signal.stft(X, fs, nperseg=nperseg, nfft=r_nfft*nperseg, noverlap=r_nover*nperseg)
 
     ax.pcolormesh(t, f, np.abs(Sxx), cmap='magma')
@@ -128,9 +135,12 @@ def stft_plot(X, fs=250, f_min=None, f_max=None, nperseg=70, r_nover=0.99, r_nff
     ax.set_title(title)
     return fig
 
+
 ''' Source: https://github.com/obspy/obspy/blob/06906f389bdaeb5fa4c4bd0cab9f066082e7da42/obspy/signal/tf_misfit.py '''
+
+
 def wavelets_plot(X, fs=250, n_freqs=100, f_min=1, f_max=40, w0=8, log_scale=False, title='CWT', fig=None, ax_idx=0):
-    ''' Apply continuous wavelets transform to visualize the change of a 
+    ''' Apply continuous wavelets transform to visualize the change of a
     nonstationary signal's frequency content over time.
     Input:
         - X: Signal to plot (numpy array of shape (n_samples,)).
@@ -144,8 +154,8 @@ def wavelets_plot(X, fs=250, n_freqs=100, f_min=1, f_max=40, w0=8, log_scale=Fal
         - ax_idx: External axis index (int).
     Output:
         - 2D color plot (frequency vs time).
-    '''    
-    
+    '''
+
     dt = 1./fs
     npts = X.shape[-1] * 2
     tmax = (npts - 1) * dt
@@ -160,7 +170,7 @@ def wavelets_plot(X, fs=250, n_freqs=100, f_min=1, f_max=40, w0=8, log_scale=Fal
 
     def scale(f):
         return w0 / (2 * np.pi * f)
-    
+
     buf = math.ceil(math.log(npts) / math.log(2))
     next_pow = int(math.pow(2, buf))
     nfft = next_pow * 2
@@ -174,17 +184,19 @@ def wavelets_plot(X, fs=250, n_freqs=100, f_min=1, f_max=40, w0=8, log_scale=Fal
             psih = psi(-1 * (t - t[-1] / 2.) / a).conjugate() / np.abs(a) ** .5
             psihf = np.fft.fft(psih, n=nfft)
             tminin = int(t[-1] / 2. / (t[1] - t[0]))
-            cwt[:, n] = np.fft.ifft(psihf * sf)[tminin:tminin + npts // 2] * (t[1] - t[0])
-            
+            cwt[:, n] = np.fft.ifft(
+                psihf * sf)[tminin:tminin + npts // 2] * (t[1] - t[0])
+
     t = np.linspace(0, X.shape[-1]/fs, X.shape[-1])
-    x, y = np.meshgrid(t, np.logspace(np.log10(f_min), np.log10(f_max), cwt.shape[1]))
-        
+    x, y = np.meshgrid(t, np.logspace(
+        np.log10(f_min), np.log10(f_max), cwt.shape[1]))
+
     if fig:
         ax = fig.get_axes()[ax_idx]
     else:
         fig, ax = plt.subplots()
-    
-    ax.pcolormesh(x, y, np.abs(cwt.T), cmap='magma');
+
+    ax.pcolormesh(x, y, np.abs(cwt.T), cmap='magma')
     if log_scale:
         ax.set_yscale('log')
     ax.set_ylabel('Frequency [Hz]')
@@ -192,7 +204,8 @@ def wavelets_plot(X, fs=250, n_freqs=100, f_min=1, f_max=40, w0=8, log_scale=Fal
     ax.set_title(title)
     return fig
 
-def tsne_plot(X, y, perplexity=20, title='t-SNE', label_idxs=[0,1,2,3], label_names=['Right', 'Left', 'Tongue', 'Feet'], fig=None, ax_idx=0):
+
+def tsne_plot(X, y, perplexity=20, title='t-SNE', label_idxs=[0, 1, 2, 3], label_names=['Right', 'Left', 'Tongue', 'Feet'], fig=None, ax_idx=0):
     ''' Visualize the EEG trials in optimized 2D embedding space.
     Input:
         - X: EEG trials (numpy array of shape (n_trials, n_channels, n_samples)).
@@ -207,33 +220,39 @@ def tsne_plot(X, y, perplexity=20, title='t-SNE', label_idxs=[0,1,2,3], label_na
         ax = fig.get_axes()[ax_idx]
     else:
         fig, ax = plt.subplots()
-    
+
     n_trials = X.shape[0]
-    out = t_sne.TSNE(n_components=2, perplexity=perplexity, n_iter=500, random_state=0).fit_transform(X.reshape((n_trials,-1)))
-    outs = np.array([ out[y==c] for c in label_idxs ])
-    
-    colors = np.array(['b','r','g','orange'])
-    [ ax.scatter(*outs[i][:,:].T, c=colors[l], alpha=0.7) for i,l in enumerate(label_idxs) ]
+    out = t_sne.TSNE(n_components=2, perplexity=perplexity, n_iter=500,
+                     random_state=0).fit_transform(X.reshape((n_trials, -1)))
+    outs = np.array([out[y == c] for c in label_idxs])
+
+    colors = np.array(['b', 'r', 'g', 'orange'])
+    [ax.scatter(*outs[i][:, :].T, c=colors[l], alpha=0.7)
+     for i, l in enumerate(label_idxs)]
     ax.set_xlabel('Feature 1')
     ax.set_ylabel('Feature 2')
-    ax.legend([ label_names[l] for l in label_idxs ], loc=0)
+    ax.legend([label_names[l] for l in label_idxs], loc=0)
     ax.set_title(title)
     return fig
 
+
 def activation_plot(X, model, layer_idx, title='Activation'):
     print(model.layers[layer_idx])
-    get_layer_outputs = K.function([model.layers[0].input], [model.layers[layer_idx].output])
+    get_layer_outputs = K.function([model.layers[0].input], [
+                                   model.layers[layer_idx].output])
     output = np.squeeze(get_layer_outputs([X])[0])
-    frequency_plot(X_train[0,0,depth_idx], NFFT=250, log=False, f_max=50)
+    frequency_plot(X_train[0, 0, depth_idx], NFFT=250, log=False, f_max=50)
 
-def visual_analysis(X, fs=250, f_min=4, f_max=30, n_perseg=125, n_freqs_wav=500, w0_wav=16, log_scale_wav=False, figsize=(9,3)):
-    fig, ax = plt.subplots(1,3, figsize=figsize)
+
+def visual_analysis(X, fs=250, f_min=4, f_max=30, n_perseg=125, n_freqs_wav=500, w0_wav=16, log_scale_wav=False, figsize=(9, 3)):
+    fig, ax = plt.subplots(1, 3, figsize=figsize)
     fig.tight_layout()
-    
+
     @interact(trial_idx=(0, X.shape[0]-1), channel_idx=(0, X.shape[1]-1))
     def plot(trial_idx=0, channel_idx=0):
-        [ ax[i].clear() for i in [0,1,2]]
-        temporal_plot(X[trial_idx, channel_idx,:], fs, fig=fig, ax_idx=0);
-        stft_plot(X[trial_idx, channel_idx,:], fs, f_min, f_max, n_perseg, fig=fig, ax_idx=1);
-        wavelets_plot(X[trial_idx, channel_idx,:], fs, n_freqs_wav, f_min, f_max, w0_wav, 
-                      log_scale_wav, fig=fig, ax_idx=2);
+        [ax[i].clear() for i in [0, 1, 2]]
+        temporal_plot(X[trial_idx, channel_idx, :], fs, fig=fig, ax_idx=0)
+        stft_plot(X[trial_idx, channel_idx, :], fs, f_min,
+                  f_max, n_perseg, fig=fig, ax_idx=1)
+        wavelets_plot(X[trial_idx, channel_idx, :], fs, n_freqs_wav, f_min, f_max, w0_wav,
+                      log_scale_wav, fig=fig, ax_idx=2)
