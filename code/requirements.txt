@@ -14,3 +14,4 @@ pyserial
 bokeh==1.4.0
 PyQt5
 pyqtgraph
+keras-tuner
