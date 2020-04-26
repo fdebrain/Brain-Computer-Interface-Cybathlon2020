@@ -1,20 +1,34 @@
-# master-thesis-cybathlon
+# Leveraging Deep Learning for Real-time EEG Classification at Cybathlon's BCI-race
+**Frédéric Debraine**, April 2020
 
-Master thesis carried out in NCM Lab at ETHZ between March and September 2019.
+This repository contains the code, reports and presentation slides of my master thesis carried out in NCM Lab at ETHZ between March and September 2019 under the supervision of Prof. Dr. Nicole Wenderoth, Ernest Mihelj.
 
-**Title:** Leveraging Deep Learning for Real-time EEG Classification at Cybathlon's BCI-race
-
-**Author:** Frédéric Debraine
-
-**Supervisors:** Prof. Dr. Nicole Wenderoth, Ernest Mihelj
-
-[Mid-term presentation](https://docs.google.com/presentation/d/1M7-L-o8VcEkF2XUpg1tlzHjlhS4FAOSxXEdc2CnIoFg/edit?usp=sharing)
-
-[Final presentation](https://docs.google.com/presentation/d/1VI9dcGJZGvR_Vj2vGMXPnahVWyrGI8pWVup2zn4acWY/edit?usp=sharing)
+This work aspires to propose a fully functional BCI composed of the following elements:
+- An offline pipeline for the training and development phase that will take care
+of formatting, loading, preprocessing the data, extract features using one of the
+multiple proposed methods, train and validate the model and optimize the full
+pipeline.
+- An online pipeline in which we will benchmark our trained models with relevant metrics regarding the real-time Cybathlon competition.
+- Visualization tools for offline/online analysis comprising signal and embedding representation, model inference and metrics to provide better interpretability and easier debugging.
 
 
-## 1. Setup
+**Presentations slides:**
+- [Mid-term presentation](https://docs.google.com/presentation/d/1M7-L-o8VcEkF2XUpg1tlzHjlhS4FAOSxXEdc2CnIoFg/edit?usp=sharing)
+- [Final presentation](https://docs.google.com/presentation/d/1VI9dcGJZGvR_Vj2vGMXPnahVWyrGI8pWVup2zn4acWY/edit?usp=sharing)
 
+**Colab Notebooks:**
+- [Benchmarking - Competition dataset](https://colab.research.google.com/drive/1QLnWBQ0ZXnaVCvoCr--Ro8In2sOHnuE9)
+- [Benchmarking - BCIC dataset](https://colab.research.google.com/drive/1cRHG0g0a_X-yfjg7U_QXlCQ4idBmjHNm)
+
+*Remark:* You need to have the `./Datasets/` folder on your Google Drive before running the Colab notebooks. 
+The `data_path` parameter should be adapted to your path once your Drive has been mounted.
+Create a local copy of the notebooks before running them and change runtime type to GPU (runtime -> change runtime type).
+
+
+![Game Environment](Reports/game_env.png)
+
+
+## 1. Installation
 - ***1. Download Anaconda (Python 3.7 distribution):*** [conda 4.7.12](https://www.anaconda.com/distribution/)
 - ***2. Clone/download the current repository***
 - ***3. Create Conda environment:***
@@ -22,7 +36,7 @@ Master thesis carried out in NCM Lab at ETHZ between March and September 2019.
 	- `conda activate cybathlon`
 - ***4. Install dependencies:***
 	- `pip install -r requirements.txt`
-	- `conda install nb_conda_kernels`
+	- `pip install -e .`
 
 ## 2. Getting the data
 
@@ -62,38 +76,6 @@ master-thesis-cybathlon
                     └── ***.vmrk
 ```
 
-## 3. Formatting the data
-
-`conda activate cybathlon`
-
-`jupyter notebook #From ./code/ folder`
-
-Go to `./code/formatting_functions/` folder  and open `examples.ipynb` notebook
-
-You can adapt `save_folder` parameter to modify the folder name in which the .npz files
-will be saved (same level as `gdf` or `vhdr` folders).
-
-## 4. Training & validating the models
-### Local Jupyter Notebooks
-
-`conda activate cybathlon`
-
-`jupyter notebook` from ./code/ folder
-
-Go to `./code/offline_pipeline/` folder
-
-Open and run `benchmarking_bcic.ipynb` or `benchmarking_competition_data.ipynb`
-
-
-
-### Colab Notebooks
-
-You need to have the `./Datasets/` folder on your Google Drive before running the Colab notebooks. 
-
-The `data_path` parameter should be adapted to your path once your Drive has been mounted.
-
-Create a local copy of the notebooks before running them and change runtime type to GPU (runtime -> change runtime type).
-
-[Benchmarking - Competition dataset](https://colab.research.google.com/drive/1QLnWBQ0ZXnaVCvoCr--Ro8In2sOHnuE9)
-
-[Benchmarking - BCIC dataset](https://colab.research.google.com/drive/1cRHG0g0a_X-yfjg7U_QXlCQ4idBmjHNm)
+## 3. Launching the visual interface
+- `conda activate cybathlon`
+- `bokeh serve bokeh_dashboard --show`
