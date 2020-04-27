@@ -1,13 +1,12 @@
 # Leveraging Deep Learning for Real-time EEG Classification at Cybathlon's BCI-race
 **Frédéric Debraine**, April 2020
 
-This repository contains the code, reports and presentation slides of my master thesis carried out in NCM Lab at ETHZ between March and September 2019 under the supervision of Prof. Dr. Nicole Wenderoth, Ernest Mihelj.
+This repository contains the code, reports and presentation slides of my master thesis carried out in NCM Lab at ETHZ between March and September 2019 under the supervision of Prof. Dr. Nicole Wenderoth and Ernest Mihelj.
 
-This work aspires to propose a fully functional BCI composed of the following elements:
+This work aspires to propose a fully functional Brain Computer Interface (BCI) composed of the following elements:
 - An offline pipeline for the training and development phase that will take care
 of formatting, loading, preprocessing the data, extract features using one of the
-multiple proposed methods, train and validate the model and optimize the full
-pipeline.
+multiple proposed methods, train, validate and optimize the model.
 - An online pipeline in which we will benchmark our trained models with relevant metrics regarding the real-time Cybathlon competition.
 - Visualization tools for offline/online analysis comprising signal and embedding representation, model inference and metrics to provide better interpretability and easier debugging.
 
