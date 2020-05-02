@@ -6,7 +6,7 @@ import traceback
 import numpy as np
 from bokeh.io import curdoc
 from bokeh.models import Div, Select, Button, Slider
-from bokeh.models import CheckboxButtonGroup, CheckboxGroup
+from bokeh.models import CheckboxButtonGroup, MultiChoice
 from bokeh.layouts import row, column
 
 from src.dataloader import load_session
@@ -33,9 +33,7 @@ class TrainerWidget:
 
     @property
     def train_ids(self):
-        selected_ids = [self.select_session.labels[i]
-                        for i in self.select_session.active]
-        return selected_ids
+        return self.select_session.value
 
     @property
     def preproc_config(self):
@@ -210,10 +208,10 @@ class TrainerWidget:
 
     def create_widget(self):
         # Select - Choose session to use for training
-        self.widget_title = Div(text='<b>Select train ids </b>')
-        self.select_session = CheckboxGroup()
-        self.select_session.labels = self.available_sessions
-        self.select_session.on_change('active', self.on_session_change)
+        self.select_session = MultiChoice(title='Select train ids',
+                                          options=self.available_sessions,
+                                          width=250, height=120)
+        self.select_session.on_change('value', self.on_session_change)
 
         # Select - Choose model to train
         self.select_model = Select(title="Model")
@@ -248,8 +246,7 @@ class TrainerWidget:
 
         self.div_info = Div()
 
-        column1 = column(self.select_model, self.widget_title,
-                         self.select_session)
+        column1 = column(self.select_session, self.select_model)
         column2 = column(self.slider_roi_start, self.slider_roi_end,
                          self.checkbox_settings, self.slider_n_iters,
                          self.div_preproc, self.checkbox_preproc,
