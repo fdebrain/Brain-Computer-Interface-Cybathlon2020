@@ -3,10 +3,13 @@ from collections import Counter
 from pathlib import Path
 import traceback
 
+import numpy as np
 import mne
 from bokeh.io import curdoc
-from bokeh.models import Div, Select, Button, Slider, CheckboxButtonGroup
-from bokeh.layouts import widgetbox, row
+from bokeh.plotting import figure
+from bokeh.models import (Div, Select, Button, Slider, CheckboxButtonGroup,
+                          Span, Label, Toggle, ColumnDataSource)
+from bokeh.layouts import column, row
 
 from src.vhdr_formatter import format_session
 
@@ -15,6 +18,63 @@ class FormatterWidget:
     def __init__(self):
         self.data_path = Path('../Datasets/Pilots/Pilot_2')
         self.labels = ['Rest', 'Left', 'Right', 'Headlight']
+        self.channel2idx = {}
+        self._t = 0
+        self._data = dict()
+        self.source = ColumnDataSource(data=dict(timestamps=[], values=[]))
+        self.source_events = ColumnDataSource(data=dict(events=[], actions=[]))
+        self.update_rate_ms = 100
+
+    @property
+    def speed(self):
+        return self.slider_speed.value * self.update_rate_ms / 1000
+
+    @property
+    def fs(self):
+        return self._data.get('fs', -1)
+
+    @property
+    def t_max(self):
+        return len(self._data.get('timestamps', [0]))
+
+    @property
+    def win_len(self):
+        return self.slider_win_len.value
+
+    @property
+    def t(self):
+        ''' Current visible time in seconds'''
+        return self._t
+
+    @t.setter
+    def t(self, val):
+        assert val < self.t_max, 'End of signal'
+
+        self._t = val
+        self.slider_t.value = val
+
+        # Extract ROI signal (convert in timestamp units)
+        start = int(self.t * self.fs)
+        end = start + int(self.win_len * self.fs)
+        ts = self._data['timestamps'][start:end]
+        eeg = self._data['values'][self.channel_idx, start:end]
+
+        # Extract ROI events
+        roi_events = np.array([(t, action)
+                               for t, action in self._data['events']
+                               if start < t*self.fs < end]).reshape((-1, 2))
+
+        if len(roi_events > 0):
+            self.event_marker.visible = True
+            self.event_marker.location = roi_events[0, 0]
+            self.event_label.visible = True
+            self.event_label.x = roi_events[0, 0]
+            self.event_label.text = str(int(roi_events[0, 1]))
+
+        # Update source
+        self.source.data = dict(timestamps=ts, values=eeg)
+        self.source_events = dict(events=roi_events[:, 0],
+                                  actions=roi_events[:, 1])
 
     @property
     def available_sessions(self):
@@ -30,6 +90,28 @@ class FormatterWidget:
         return self.data_path / self.selected_session
 
     @property
+    def available_runs(self):
+        runs = self.session_path.glob('vhdr/*.vhdr')
+        return [''] + [r.name for r in runs]
+
+    @property
+    def session_runs(self):
+        folder = 'game' if self.is_game_session else 'vhdr'
+        return list(self.session_path.glob(f'{folder}/*.vhdr'))
+
+    @property
+    def run_path(self):
+        return self.session_path / 'vhdr' / self.select_run.value
+
+    @property
+    def channel_name(self):
+        return self.select_channel.value
+
+    @property
+    def channel_idx(self):
+        return self.channel2idx.get(self.channel_name, None)
+
+    @property
     def labels_encoding(self):
         markers = [int(s.value) for s in self.select_labels]
         return dict(zip(markers, [0, 1, 2, 3]))
@@ -38,10 +120,6 @@ class FormatterWidget:
     def labels_decoding(self):
         markers = [int(s.value) for s in self.select_labels]
         return dict(zip(self.labels, markers))
-
-    @property
-    def available_runs(self):
-        return list(self.session_path.glob('vhdr/*.vhdr'))
 
     @property
     def pre(self):
@@ -64,7 +142,13 @@ class FormatterWidget:
     def should_preprocess(self):
         return 'Preprocess' in self.selected_settings
 
-    def update_widget(self):
+    @property
+    def is_game_session(self):
+        return 'Game session' in self.selected_settings
+
+    def reset_widget(self):
+        self.select_session.options = self.available_sessions
+        self.select_run.options = self.available_runs
         self.button_format.button_type = "primary"
         self.button_format.label = "Format"
 
@@ -80,13 +164,13 @@ class FormatterWidget:
         logging.info('For sessions > 3: MI starts 7s after marker')
 
         # Reset button state
-        self.update_widget()
+        self.reset_widget()
 
         # Get session info
         fs = None
         events_counter = dict()
         n_channels, n_samples = 0, 0
-        for run in self.available_runs:
+        for run in self.session_runs:
             raw = mne.io.read_raw_brainvision(vhdr_fname=run,
                                               preload=False,
                                               verbose=False)
@@ -96,7 +180,13 @@ class FormatterWidget:
             n_samples += raw.n_times
 
             events = mne.events_from_annotations(raw, verbose=False)[0]
-            events = Counter([e[-1]for e in events])
+
+            # Extract only decimal digit if game session
+            if self.is_game_session:
+                events = Counter([int(str(e[-1])[0]) for e in events])
+            else:
+                events = Counter([e[-1]for e in events])
+
             for event in events:
                 events_counter[event] = events_counter.get(event, 0) + \
                     events[event]
@@ -110,6 +200,31 @@ class FormatterWidget:
         for event, count in events_counter.items():
             if count > 5:
                 self.div_info.text += f'&emsp; <b>{event}:</b>  {count} <br>'
+
+    def on_run_change(self, attr, old, new):
+        logging.info(f'Select visualizer run {new}')
+        raw = mne.io.read_raw_brainvision(vhdr_fname=self.run_path,
+                                          preload=True,
+                                          verbose=False)
+
+        # Get channels
+        available_channels = raw.ch_names
+        self.select_channel.options = [''] + available_channels
+        self.channel2idx = {c: i+1 for i, c in enumerate(available_channels)}
+
+        # Get events
+        events = mne.events_from_annotations(raw, verbose=False)[0]
+
+        # Store signal and events
+        self._data['fs'] = raw.info['sfreq']
+        self._data['values'], self._data['timestamps'] = raw.get_data(
+            return_times=True)
+        self._data['events'] = [(ts/self.fs, action)
+                                for ts, action in events[:, [0, 2]]]
+
+        logging.info(self._data['events'])
+        self._t = 0
+        self.reset_widget()
 
     def on_format_start(self):
         assert self.select_session.value != '', \
@@ -128,7 +243,7 @@ class FormatterWidget:
         save_path = f'{self.session_path}'
 
         try:
-            format_session(self.available_runs,
+            format_session(self.session_runs,
                            save_path,
                            extraction_settings,
                            preprocess_settings,
@@ -142,17 +257,70 @@ class FormatterWidget:
         self.button_format.button_type = "success"
         self.button_format.label = "Formatted"
 
+    def on_channel_change(self, attr, old, new):
+        logging.info(f'Select channel {new}')
+
+        if self.channel_idx is not None:
+            # Update source
+            start = int(self.t * self.fs)
+            end = start + int(self.win_len * self.fs)
+            ts = self._data['timestamps'][start:end]
+            eeg = self._data['values'][self.channel_idx, start:end]
+            self.source.data = dict(timestamps=ts, values=eeg)
+
+            # Update plot axis label
+            self.plot_signal.yaxis.axis_label = f'Amplitude - {self.channel_name}'
+
+            # Update navigation slider
+            self.slider_t.end = int(self.t_max / self.fs)
+
+    def on_win_len_change(self, attr, old, new):
+        # logging.info(f'Win_len update: {new}')
+        self.t = self._t
+
+    def on_t_change(self, attr, old, new):
+        # logging.info(f't update: {new}')
+        self.t = new
+
+    def callback_play(self):
+        shift = int(self.speed * self.fs)
+        start = int((self.t + self.win_len) * self.fs)
+        end = start + shift
+
+        if self.speed > 0:
+            ts = np.roll(self.source.data['timestamps'], -shift)
+            ts[-shift:] = self._data['timestamps'][start:end]
+            eeg = np.roll(self.source.data['values'], -shift, axis=-1)
+            eeg[-shift:] = self._data['values'][self.channel_idx, start:end]
+            self.source.data = dict(timestamps=ts, values=eeg)
+            self.t += self.speed
+
+    def on_toggle_play(self, active):
+        assert self.channel_name != '', 'Select a channel first!'
+        if active:
+            logging.info('Play')
+            self.play_toggle.button_type = 'warning'
+            self.callback = curdoc().add_periodic_callback(self.callback_play,
+                                                           self.update_rate_ms)
+        else:
+            logging.info('Stop')
+            self.play_toggle.button_type = 'primary'
+            curdoc().remove_periodic_callback(self.callback)
+
     def create_widget(self):
+        # Select - Session to format/visualize
         self.select_session = Select(title='Session:')
         self.select_session.options = self.available_sessions
         self.select_session.on_change('value', self.on_session_change)
 
+        # Select - Label encoding mappings
         self.select_labels = [Select(title=self.labels[id],
                                      options=[str(i) for i in range(30)],
                                      value=str(id+3),
                                      width=80)
                               for id in range(4)]
 
+        # Slider - Extraction window
         self.slider_pre_event = Slider(start=-10, end=10, value=2,
                                        title='Window start (s before event)')
         self.slider_pre_event.on_change('value', self.on_extract_change)
@@ -160,17 +328,68 @@ class FormatterWidget:
                                         title='Window end (s after event)')
         self.slider_post_event.on_change('value', self.on_extract_change)
 
+        # Checkbox - Preprocessing
         self.checkbox_settings = CheckboxButtonGroup(
-            labels=['Resample to 250Hz', 'Preprocess'])
+            labels=['Resample to 250Hz', 'Preprocess', 'Game session'])
 
         self.button_format = Button(label="Format", button_type="primary")
         self.button_format.on_click(self.on_format_start)
 
+        # Div - Additional informations
         self.div_info = Div()
 
+        # Select - Run to visualize
+        self.select_run = Select(title="Run")
+        self.select_run.on_change('value', self.on_run_change)
+
+        # Select - Channel to visualize
+        self.select_channel = Select(title="Channel")
+        self.select_channel.on_change('value', self.on_channel_change)
+
+        # Slider - Navigate through signal
+        self.slider_t = Slider(title="Navigate", start=0,
+                                     end=1000, value=0)
+        self.slider_t.on_change('value', self.on_t_change)
+
+        # Slider - Window length
+        self.slider_win_len = Slider(title="Win length [s]", start=1,
+                                     end=10, value=2)
+        self.slider_win_len.on_change('value', self.on_win_len_change)
+        # Slider - Play speed rate
+        self.slider_speed = Slider(title="Speed", start=0,
+                                   end=10, value=1)
+
+        # Toggle - Play
+        self.play_toggle = Toggle(label='Play', button_type="primary")
+        self.play_toggle.on_click(self.on_toggle_play)
+
+        # Plot - EEG temporal signal
+        self.plot_signal = figure(title='Temporal EEG signal',
+                                  x_axis_label='Time [s]',
+                                  y_axis_label='Amplitude',
+                                  plot_height=450,
+                                  plot_width=850)
+        self.plot_signal.line(x='timestamps', y='values',
+                              source=self.source)
+
+        # Span - Event marker & label
+        self.event_marker = Span(location=0, dimension='height',
+                                 line_color='red', line_dash='dashed',
+                                 line_width=3, visible=False)
+        self.event_label = Label(x=0, y=0, y_units='screen',
+                                 text_color='red', visible=False)
+        self.plot_signal.renderers.extend([self.event_marker,
+                                           self.event_label])
+
         # Create tab with layout
-        layout = widgetbox([self.select_session, row(self.select_labels),
-                            self.slider_pre_event, self.slider_post_event,
-                            self.checkbox_settings,
-                            self.button_format, self.div_info])
+        column1 = column([self.select_session,
+                          row(self.select_labels),
+                          self.slider_pre_event, self.slider_post_event,
+                          self.checkbox_settings,
+                          self.button_format, self.div_info])
+        column2 = column([self.select_run, self.select_channel,
+                          self.slider_t, self.slider_speed,
+                          self.slider_win_len, self.play_toggle])
+        column3 = column(self.plot_signal)
+        layout = row(column1, column2, column3)
         return layout
