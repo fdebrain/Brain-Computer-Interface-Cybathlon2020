@@ -76,6 +76,10 @@ class PlayerWidget:
             return [''] + [p.device for p in serial.tools.list_ports.comports()]
 
     @property
+    def available_logs(self):
+        return list(self.game_logs_path.glob('raceLog*.txt'))
+
+    @property
     def selected_settings(self):
         active = self.checkbox_settings.active
         return [self.checkbox_settings.labels[i] for i in active]
@@ -153,15 +157,26 @@ class PlayerWidget:
         y_true = self.chrono_source.data['y_true']
         return accuracy_score(y_true, y_pred)
 
+    def clean_log_directory(self):
+        import shutil
+        import os
+        shutil.rmtree(self.game_logs_path, ignore_errors=True)
+        os.mkdir(self.game_logs_path)
+
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
+
+        # Launch game in separate process
+        self.clean_log_directory()
         game = subprocess.Popen(str(self.game_path), shell=False)
         assert game is not None, 'Can\'t launch game !'
 
         # Wait for logfile to be created
-        time.sleep(5)
-        logs = list(self.game_logs_path.glob('raceLog*.txt'))
-        log_filename = str(logs[-1])
+        while not len(self.available_logs) > 0:
+            logging.info('Waiting for race logs...')
+            time.sleep(1)
+
+        log_filename = str(self.available_logs[-1])
 
         # Check if log reader already instanciated
         if self.game_log_reader is not None:
