@@ -11,7 +11,7 @@ comet_ml==2.0
 joblib==0.13.2
 pylsl
 pyserial
-bokeh==1.4.0
+bokeh==2.0.2
 PyQt5
 pyqtgraph
 keras-tuner
