@@ -59,7 +59,7 @@ class PlayerWidget:
         self.models_path = Path('./saved_models')
         self.model = None
         self.signal = None
-        self._last_pred = (3, "Rest")
+        self._last_pred = (0, 'Rest')
 
     @property
     def available_models(self):
@@ -255,7 +255,7 @@ class PlayerWidget:
             return
 
         # Send action to game avatar (if not rest command)
-        if action_idx in [0, 1, 2]:
+        if action_idx in [1, 2, 3]:
             logging.info(f'Sending: {action_idx}')
             self.game_player.sendCommand(action_idx)
 

@@ -25,7 +25,7 @@ class CommandSenderGame(QtCore.QRunnable):
         self.UDP_IP = "127.0.0.1"
         self.UDP_PORT = 5555
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP
-        self.commands = {0: "\x0B", 1: "\x0D", 2: "\x0C"}
+        self.commands = {1: "\x0B", 2: "\x0D", 3: "\x0C"}
 
     @QtCore.pyqtSlot()
     def run(self):

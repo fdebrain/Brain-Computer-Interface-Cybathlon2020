@@ -9,10 +9,10 @@ class GameLogReader(QtCore.QRunnable):
         self.parent = parent
         self.logfilename = logfilename
         self.player_idx = player_idx
-        self.log2actions = {"leftWinker": (0, "Left"),
-                            "rightWinker": (1, "Right"),
-                            "headlight": (2, "Light"),
-                            "none": (3, "Rest")}
+        self.log2actions = {"none": (0, "Rest"),
+                            "leftWinker": (1, "Left"),
+                            "rightWinker": (2, "Right"),
+                            "headlight": (3, "Light")}
 
     def notify(self, expected_action):
         self.parent.expected_action = expected_action
@@ -33,7 +33,7 @@ class GameLogReader(QtCore.QRunnable):
 
         for line in loglines:
             if ("start race" in line):
-                self.notify((3, 'Game start'))
+                self.notify((0, 'Game start'))
 
             # Exctract expected actions (groundtruth) & notify player widget
             elif ("p{}_expectedInput".format(self.player_idx) in line):
