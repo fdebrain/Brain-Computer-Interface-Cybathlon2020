@@ -18,11 +18,10 @@ Master thesis carried out in NCM Lab at ETHZ between March and September 2019.
 - ***1. Download Anaconda (Python 3.7 distribution):*** [conda 4.7.12](https://www.anaconda.com/distribution/)
 - ***2. Clone/download the current repository***
 - ***3. Create Conda environment:***
-	- `conda create -n cybathlon`
-	- `conda activate cybathlon`
-- ***4. Install dependencies:***
-	- `pip install -r requirements.txt`
-	- `conda install nb_conda_kernels`
+	- `conda create env -f environment.yml`
+- ***4. Install extra dependencies:***
+    - `conda activate cybathlon`
+	- `pip install -e .`
 
 ## 2. Getting the data
 
@@ -88,7 +87,7 @@ Open and run `benchmarking_bcic.ipynb` or `benchmarking_competition_data.ipynb`
 
 ### Colab Notebooks
 
-You need to have the `./Datasets/` folder on your Google Drive before running the Colab notebooks. 
+You need to have the `./Datasets/` folder on your Google Drive before running the Colab notebooks.
 
 The `data_path` parameter should be adapted to your path once your Drive has been mounted.
 
