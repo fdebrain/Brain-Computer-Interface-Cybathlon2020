@@ -17,7 +17,7 @@ dependencies:
   - tensorflow==2.1.0
   - scikit-optimize==0.7.4
   - keras-tuner==1.0.1
-  - pylsl==1.13
+  - pylsl==1.13.*
   - pip:
     - mne==0.18
     - tensorflow-addons
