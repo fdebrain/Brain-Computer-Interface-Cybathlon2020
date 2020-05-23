@@ -11,7 +11,7 @@ import serial.tools.list_ports
 from bokeh.plotting import figure
 from bokeh.layouts import row, column
 from bokeh.models import ColumnDataSource
-from bokeh.models.widgets import Button, Div, Select, CheckboxButtonGroup
+from bokeh.models import Button, Div, Select, CheckboxButtonGroup, RadioButtonGroup
 from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
@@ -90,11 +90,11 @@ class PlayerWidget:
 
     @property
     def autoplay(self):
-        return 'Autoplay' in self.selected_settings
+        return self.radio_mode.active == 0
 
     @property
     def should_predict(self):
-        return 'Predict' in self.selected_settings
+        return self.radio_mode.active == 1
 
     @property
     def sending_events(self):
@@ -178,62 +178,78 @@ class PlayerWidget:
 
         log_filename = str(self.available_logs[-1])
 
+    def on_mode_change(self, active):
+        logging.info(f'Mode: {self.radio_mode.labels[active]}')
+
+    def reset_all(self):
+        self.reset_game()
+        self.reset_log_reader()
+        self.remove_action_callback()
+        self.remove_lsl_callback()
+
+    def reset_game(self):
+        self.game.kill()
+        self.game = None
+
+    def reset_log_reader(self):
+        logging.info('Delete old log reader')
+        self.thread_log.clear()
+        del self.game_log_reader
+
+    def start_game_process(self):
+        logging.info('Lauching Cybathlon game')
+        self.n_old_logs = len(self.available_logs)
+
+        # Close any previous game process
+        if self.game is not None:
+            self.reset_game()
+
+        self.game = subprocess.Popen(str(self.game_path),
+                                     stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE,
+                                     text=True)
+        assert self.game is not None, 'Can\'t launch game !'
+
+    def start_log_reader(self):
         # Check if log reader already instanciated
         if self.game_log_reader is not None:
-            logging.info('Delete old log reader')
-            self.thread_log.clear()
-            del self.game_log_reader
+            self.reset_log_reader()
 
+        # Wait for new logfile to be created
+        while not len(self.available_logs) - self.n_old_logs > 0:
+            logging.info('Waiting for new race logs...')
+            time.sleep(0.5)
+        log_filename = str(self.available_logs[-1])
+
+        # Log reader is started in a separate thread
         logging.info(f'Instanciate log reader {log_filename}')
         self.game_log_reader = GameLogReader(self, log_filename,
                                              self.player_idx)
         self.thread_log.start(self.game_log_reader)
+
+    def on_launch_game_start(self):
+        self.radio_mode.active = 0
+        self.button_launch_game.label = 'Lauching...'
+        self.button_launch_game.button_type = 'warning'
+
+    def on_launch_game(self):
+        self.start_game_process()
+        self.start_log_reader()
+        self.button_launch_game.label = 'Launched'
         self.button_launch_game.button_type = 'success'
 
-    def on_select_port(self, attr, old, new):
-        logging.info(f'Select new port: {new}')
-
-        if self.port_sender is not None:
-            logging.info('Delete old log reader')
-            del self.port_sender
-
-        logging.info(f'Instanciate port sender {new}')
-        self.port_sender = CommandSenderPort(new)
-
-    def on_checkbox_settings_change(self, active):
-        logging.info(f'Active settings: {active}')
-        self.select_port.options = self.available_ports
-        self.select_model.options = self.available_models
-
-        if self.autoplay and self.should_predict:
-            logging.info('Deactivate autoplay first !')
-            self.checkbox_settings.active = [0]
-
-        elif self.should_predict and self.callback_action_id is None:
-            if self.model is not None:
-                self.create_action_callback()
-            else:
-                logging.info('Load pre-trained model first !')
-                self.checkbox_settings.active = [0]
-
-        elif self.autoplay and self.callback_action_id is None:
-            self.create_action_callback()
-
-        if self.sending_events and self.port_sender is None:
-            logging.info('Select port first !')
-            self.checkbox_settings.active = [0]
-
     def create_action_callback(self):
-        assert self.callback_action_id is None, 'Action callback already exists!'
-        logging.info('Create action callback')
-        self.callback_action_id = self.parent.add_periodic_callback(
-            self.callback_action, 1000)
+        if self.callback_action_id is None:
+            logging.info('Create action callback')
+            self.callback_action_id = self.parent.add_periodic_callback(
+                self.callback_action, 1000)
 
     def remove_action_callback(self):
-        assert self.callback_action_id is not None, 'Action callback doesn\'t exist'
-        logging.info('Remove action callback')
-        self.parent.remove_periodic_callback(self.callback_action_id)
-        self.callback_action_id = None
+        if self.callback_action_id:
+            logging.info('Remove action callback')
+            self.parent.remove_periodic_callback(self.callback_action_id)
+            self.callback_action_id = None
 
     def callback_action(self):
         ''' This periodic callback starts at the same time that the race '''
@@ -315,19 +331,23 @@ class PlayerWidget:
                 self.create_lsl_callback()
                 self.button_lsl.label = 'Reading LSL stream'
                 self.button_lsl.button_type = 'success'
+                self.radio_mode.active = 1
+
         except Exception:
             logging.info(f'No LSL stream - {traceback.format_exc()}')
             self.lsl_reader = None
 
     def create_lsl_callback(self):
-        assert self.callback_lsl_id is None, 'LSL callback already exists!'
-        self.callback_lsl_id = self.parent.add_periodic_callback(
-            self.callback_lsl, 100)
+        if self.callback_lsl_id is None:
+            logging.info('Create LSL callback')
+            self.callback_lsl_id = self.parent.add_periodic_callback(
+                self.callback_lsl, 100)
 
     def remove_lsl_callback(self):
-        assert self.callback_lsl_id is not None, 'LSL callback doesn\'t exist'
-        self.parent.remove_periodic_callback(self.callback_lsl_id)
-        self.callback_lsl_id = None
+        if self.callback_lsl_id:
+            logging.info('Remove LSL callback')
+            self.parent.remove_periodic_callback(self.callback_lsl_id)
+            self.callback_lsl_id = None
 
     def callback_lsl(self):
         ''' Fetch EEG data from LSL stream '''
@@ -381,6 +401,11 @@ class PlayerWidget:
         self.select_port.options = self.available_ports
         self.select_port.on_change('value', self.on_select_port)
 
+        # Radio button - Choose play mode
+        self.div_mode = Div(text='<b>Mode</b>', align='center')
+        self.radio_mode = RadioButtonGroup(labels=['Autoplay', 'Model preds'])
+        self.radio_mode.on_click(self.on_mode_change)
+
         # Checkbox - Choose player settings
         self.div_settings = Div(text='<b>Settings</b>', align='center')
         self.checkbox_settings = CheckboxButtonGroup(labels=['Autoplay',
@@ -431,6 +456,7 @@ class PlayerWidget:
         column1 = column(self.button_launch_game, self.button_lsl,
                          self.select_model, self.select_port,
                          self.select_channel,
+                         self.div_mode, self.radio_mode,
                          self.div_settings, self.checkbox_settings,
                          self.div_preproc, self.checkbox_preproc)
         column2 = column(self.plot_stream, self.plot_chronogram)
