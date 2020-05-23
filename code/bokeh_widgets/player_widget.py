@@ -125,9 +125,11 @@ class PlayerWidget:
 
         # Send groundtruth to microcontroller
         if self.sending_events:
-            assert self.port_sender is not None, 'Please select a port !'
-            self.port_sender.sendCommand(action_idx)
-            logging.info(f'Send event: {action}')
+            if self.port_sender is not None:
+                self.port_sender.sendCommand(action_idx)
+                logging.info(f'Send event: {action}')
+            else:
+                logging.info('Please select a port !')
 
     @property
     def model_name(self):
@@ -173,18 +175,15 @@ class PlayerWidget:
         self.select_model.options = self.available_models
         self.model = load_pipeline(self.model_path)
 
-    def on_launch_game(self):
-        logging.info('Lauching Cybathlon game')
+    def on_select_port(self, attr, old, new):
+        logging.info(f'Select new port: {new}')
 
-        # Launch game in separate process
-        self.clean_log_directory()
-        game = subprocess.Popen(str(self.game_path), shell=False)
-        assert game is not None, 'Can\'t launch game !'
+        if self.port_sender is not None:
+            logging.info('Delete old log reader')
+            del self.port_sender
 
-        # Wait for logfile to be created
-        while not len(self.available_logs) > 0:
-            logging.info('Waiting for race logs...')
-            time.sleep(1)
+        logging.info(f'Instanciate port sender {new}')
+        self.port_sender = CommandSenderPort(new)
 
         log_filename = str(self.available_logs[-1])
 
@@ -432,11 +431,7 @@ class PlayerWidget:
 
         # Checkbox - Choose player settings
         self.div_settings = Div(text='<b>Settings</b>', align='center')
-        self.checkbox_settings = CheckboxButtonGroup(labels=['Autoplay',
-                                                             'Predict',
-                                                             'Send events'],
-                                                     active=[0])
-        self.checkbox_settings.on_click(self.on_checkbox_settings_change)
+        self.checkbox_settings = CheckboxButtonGroup(labels=['Send events'])
 
         # Checkbox - Choose preprocessing steps
         self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
