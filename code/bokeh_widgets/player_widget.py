@@ -16,7 +16,7 @@ from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
 from src.pipeline import load_pipeline
-from src.preprocessing import cropping
+from src.preprocessing import cropping, preprocessing
 from src.models import predict
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
@@ -60,7 +60,7 @@ class PlayerWidget:
         self.models_path = Path('./saved_models')
         self.model = None
         self.signal = None
-        self._last_pred = (0, 'Rest')
+        self.current_pred = (0, 'Rest')
 
     @property
     def available_models(self):
@@ -137,6 +137,10 @@ class PlayerWidget:
         return 'Rereference' in self.selected_preproc
 
     @property
+    def should_filter(self):
+        return 'Filter' in self.selected_preproc
+
+    @property
     def should_standardize(self):
         return 'Standardize' in self.selected_preproc
 
@@ -158,11 +162,10 @@ class PlayerWidget:
         y_true = self.chrono_source.data['y_true']
         return accuracy_score(y_true, y_pred)
 
-    def clean_log_directory(self):
-        import shutil
-        import os
-        shutil.rmtree(self.game_logs_path, ignore_errors=True)
-        os.mkdir(self.game_logs_path)
+    def on_model_change(self, attr, old, new):
+        logging.info(f'Select new pre-trained model {new}')
+        self.select_model.options = self.available_models
+        self.model = load_pipeline(self.model_path)
 
     def on_launch_game(self):
         logging.info('Lauching Cybathlon game')
@@ -253,14 +256,14 @@ class PlayerWidget:
             self.callback_action_id = None
 
     def callback_action(self):
-        ''' This periodic callback starts at the same time that the race '''
+        ''' This periodic callback starts at the same time as the race '''
         # Case 1: Autopilot - Return expected action from logs
         if self.autoplay:
             model_name = 'Autoplay'
             # time.sleep(np.random.random_sample())
             action_idx = self.expected_action[0]
 
-        # Case 2: Model prediction - Predict from LSL stream
+        # Case 2: Model prediction - Predict from LSL stream TODO: extract this as a function
         elif self.should_predict:
             assert self.callback_lsl_id is not None, 'Please connect to LSL stream'
             model_name = self.model_name
@@ -271,15 +274,25 @@ class PlayerWidget:
             X = np.delete(X, [0, 30], axis=0)
 
             # Selecting last 1s of signal
-            X = X[:, :, -self.fs:]
+            X = X[np.newaxis, :, -self.fs:]
+
+            # Preprocess
+            X = preprocessing(X, self.fs, self.should_reref,
+                              self.should_filter,
+                              self.should_standardize)
 
             # Cropping
             X, _ = cropping(X, [None], self.fs,
                             n_crops=10, crop_len=0.5)
 
-            # TODO: test
-            action_idx = predict(X, self.model, self.is_convnet)
-            logging.info(f'Action idx: {action_idx}')
+            # If no model
+            if self.model is None:
+                action_idx = 0
+                logging.warning('Rest action sent by default!'
+                                'Please select a model.')
+            else:
+                action_idx = predict(X, self.model, self.is_convnet)
+                logging.info(f'Action idx: {action_idx}')
 
         # Case 3: Remove callback
         else:
@@ -291,7 +304,7 @@ class PlayerWidget:
             logging.info(f'Sending: {action_idx}')
             self.game_player.sendCommand(action_idx)
 
-        self._last_pred = (action_idx, self.pred2encoding[action_idx])
+        self.current_pred = (action_idx, self.pred2encoding[action_idx])
 
         # Update chronogram source (if race started)
         if self.game_start_time is not None:
@@ -303,7 +316,7 @@ class PlayerWidget:
         # Update information display
         self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
             f'<b>Groundtruth:</b> {self.expected_action} <br>' \
-            f'<b>Prediction:</b> {self._last_pred} <br>' \
+            f'<b>Prediction:</b> {self.current_pred} <br>' \
             f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
 
     def on_lsl_connect_start(self):
@@ -423,8 +436,8 @@ class PlayerWidget:
         self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
         self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
                                                             'Standardize',
-                                                            'Rereference',
-                                                            'Crop'])
+                                                            'Rereference'],
+                                                    active=[1, 2])
 
         # Select - Channel to visualize
         self.select_channel = Select(title='Select channel', value='1 - Fp1')
