@@ -51,6 +51,7 @@ class PlayerWidget:
         # LSL stream reader
         self.parent = parent
         self.lsl_reader = None
+        self.lsl_start_time = None
         self.thread_lsl = QtCore.QThreadPool()
         self.callback_lsl_id = None
         self.channel_source = ColumnDataSource(dict(ts=[], data=[]))
@@ -305,25 +306,22 @@ class PlayerWidget:
             f'<b>Prediction:</b> {self._last_pred} <br>' \
             f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
 
-    def on_model_change(self, attr, old, new):
-        logging.info(f'Select new pre-trained model {new}')
-        self.select_model.options = self.available_models
-        self.model = load_pipeline(self.model_path)
-
-    def on_channel_change(self, attr, old, new):
-        logging.info(f'Select new channel {new}')
-        self.channel_source.data['data'] = []
-        self.plot_stream.yaxis.axis_label = f'Amplitude ({new})'
-
-    def on_lsl_connect(self):
+    def on_lsl_connect_start(self):
         if self.lsl_reader is not None:
             logging.info('Delete old lsl stream')
             self.thread_lsl.clear()
-            del self.lsl_reader
+            self.lsl_reader = None
 
+        self.button_lsl.label = 'Seaching...'
+        self.button_lsl.button_type = 'warning'
+        self.parent.add_next_tick_callback(self.on_lsl_connect)
+
+    def on_lsl_connect(self):
         try:
             self.lsl_reader = LSLClient()
-            self.signal = np.zeros((self.lsl_reader.n_channels, 2000))
+            self.fs = self.lsl_reader.fs
+            self.signal = np.zeros((self.lsl_reader.n_channels, 4 * self.fs))
+
             if self.lsl_reader is not None:
                 logging.info('Start periodic callback - LSL')
                 self.select_channel.options = [f'{i+1} - {ch}' for i, ch
@@ -335,6 +333,8 @@ class PlayerWidget:
 
         except Exception:
             logging.info(f'No LSL stream - {traceback.format_exc()}')
+            self.button_lsl.label = 'Can\'t find stream'
+            self.button_lsl.button_type = 'danger'
             self.lsl_reader = None
 
     def create_lsl_callback(self):
@@ -349,37 +349,42 @@ class PlayerWidget:
             self.parent.remove_periodic_callback(self.callback_lsl_id)
             self.callback_lsl_id = None
 
+    def _fetch_data(self):
+        data, ts = self.lsl_reader.get_data()
+
+        if len(data.shape) == 1:
+            logging.info('Skipping data points (bad format)')
+            return
+
+        # Convert timestamps in seconds
+        if self.lsl_start_time is None:
+            self.lsl_start_time = ts[0]
+        ts -= self.lsl_start_time
+
+        # Clean signal and reference
+        data = np.swapaxes(data, 1, 0)
+
+        # Update source
+        ch = self.channel_idx
+        self.channel_source.stream(dict(ts=ts, data=data[ch, :]),
+                                   rollover=int(2 * self.fs))
+
+        # Update signal
+        chunk_size = data.shape[-1]
+        self.signal = np.roll(self.signal, -chunk_size, axis=-1)
+        self.signal[:, -chunk_size:] = data
+
     def callback_lsl(self):
         ''' Fetch EEG data from LSL stream '''
-        data, ts = [], []
         try:
-            data, ts = self.lsl_reader.get_data()
-
-            # Convert timestamps in seconds
-            ts /= self.fs
-
-            if len(data.shape) > 1:
-                # Clean signal and reference TODO: just for visualization purpose
-                data = np.swapaxes(data, 1, 0)
-                # data = 1e6 * data
-
-                # Update source
-                ch = self.channel_idx
-                self.channel_source.stream(dict(ts=ts,
-                                                data=data[ch, :]),
-                                           rollover=int(2*self.fs))
-                # Update signal
-                chunk_size = data.shape[-1]
-                self.signal = np.roll(self.signal, -chunk_size, axis=-1)
-                self.signal[:, -chunk_size:] = data
-
+            self._fetch_data()
         except Exception:
             logging.info(
                 f'Ending periodic callback - {traceback.format_exc()}')
             self.remove_lsl_callback()
             self.remove_action_callback()
-            self.button_lsl.label = 'No LSL stream'
-            self.button_lsl.button_type = 'warning'
+            self.button_lsl.label = 'No stream'
+            self.button_lsl.button_type = 'danger'
 
     def create_widget(self):
         # Button - Launch Cybathlon game in new window
@@ -389,7 +394,7 @@ class PlayerWidget:
 
         # Button - Connect to LSL stream
         self.button_lsl = Button(label='Connect to LSL')
-        self.button_lsl.on_click(self.on_lsl_connect)
+        self.button_lsl.on_click(self.on_lsl_connect_start)
 
         # Select - Choose pre-trained model
         self.select_model = Select(title="Select pre-trained model")
