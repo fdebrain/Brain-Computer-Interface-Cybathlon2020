@@ -153,10 +153,6 @@ class PlayerWidget:
         return 'Standardize' in self.selected_preproc
 
     @property
-    def should_crop(self):
-        return 'Crop' in self.selected_preproc
-
-    @property
     def is_convnet(self):
         return self.select_model.value.split('.')[-1] == 'h5'
 
@@ -185,7 +181,10 @@ class PlayerWidget:
         logging.info(f'Instanciate port sender {new}')
         self.port_sender = CommandSenderPort(new)
 
-        log_filename = str(self.available_logs[-1])
+    def on_channel_change(self, attr, old, new):
+        logging.info(f'Select new channel {new}')
+        self.channel_source.data['data'] = []
+        self.plot_stream.yaxis.axis_label = f'Amplitude ({new})'
 
     def on_mode_change(self, active):
         logging.info(f'Mode: {self.radio_mode.labels[active]}')
