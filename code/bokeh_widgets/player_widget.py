@@ -21,6 +21,7 @@ from src.models import predict
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
 from src.game_log_reader import GameLogReader
+from .utils import clean_log_directory
 
 
 class PlayerWidget:
@@ -35,6 +36,10 @@ class PlayerWidget:
         self.ports = Path('/dev/ttyACM*')
         self._expected_action = None
         self.thread_log = QtCore.QThreadPool()
+
+        # Game window (separate process)
+        clean_log_directory(self.game_logs_path)
+        self.game = None
 
         # Port event sender
         self.port_sender = None
@@ -78,7 +83,8 @@ class PlayerWidget:
 
     @property
     def available_logs(self):
-        return list(self.game_logs_path.glob('raceLog*.txt'))
+        logs = list(self.game_logs_path.glob('raceLog*.txt'))
+        return sorted(logs)
 
     @property
     def selected_settings(self):
