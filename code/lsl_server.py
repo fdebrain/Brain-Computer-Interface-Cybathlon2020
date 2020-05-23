@@ -1,8 +1,10 @@
 import mne
 from mne_realtime import MockLSLStream
-from online_pipeline.config import stream_file
 import time
 import logging
+
+stream_file = '../Datasets/Pilots/Pilot_2/Session_18/game/EEG64_CY_pilot_07032002_18_12_game1.vhdr'
+
 
 # Setup logging
 root_logger = logging.getLogger()
