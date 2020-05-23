@@ -24,6 +24,12 @@ if __name__ == '__main__':
     logging.info(
         f'Real-time streaming from EEG recording at {streamer._sfreq} Hz')
 
-    time.sleep(50)
+    counter = 0
+    countdown = time.time()
+    while counter < raw.n_times / raw.info['sfreq']:
+        if time.time() - countdown > 1:
+            print(f'Current timestamp: {streamer._sfreq*counter}')
+            countdown = time.time()
+            counter += 1
 
     streamer.stop()
