@@ -176,6 +176,14 @@ class PlayerWidget:
         y_true = self.chrono_source.data['y_true']
         return accuracy_score(y_true, y_pred)
 
+    @property
+    def game_is_on(self):
+        if self.game is not None:
+            # Poll returns None when game process is running and 0 otherwise
+            return self.game.poll() is None
+        else:
+            return False
+
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
         self.select_model.options = self.available_models
@@ -278,11 +286,21 @@ class PlayerWidget:
 
     def callback_action(self):
         ''' This periodic callback starts at the same time as the race '''
+
+        if not self.game_is_on:
+            logging.info('Game window was closed')
+            self.button_launch_game.label = 'Launch Game'
+            self.button_launch_game.button_type = 'primary'
+            self.parent.add_next_tick_callback(self.remove_action_callback)
+            return
+
         # Case 1: Autopilot - Return expected action from logs
         if self.autoplay:
             model_name = 'Autoplay'
             # time.sleep(np.random.random_sample())
             action_idx = self.expected_action[0]
+            print(f'Game state: {self.game.poll()}')
+            time.sleep(0.5)
 
         # Case 2: Model prediction - Predict from LSL stream TODO: extract this as a function
         elif self.should_predict:
@@ -315,20 +333,15 @@ class PlayerWidget:
                 action_idx = predict(X, self.model, self.is_convnet)
                 logging.info(f'Action idx: {action_idx}')
 
-        # Case 3: Remove callback
-        else:
-            self.remove_action_callback()
-            return
-
-        # Send action to game avatar (if not rest command)
-        if action_idx in [1, 2, 3]:
-            logging.info(f'Sending: {action_idx}')
-            self.game_player.sendCommand(action_idx)
-
         self.current_pred = (action_idx, self.pred2encoding[action_idx])
 
-        # Update chronogram source (if race started)
-        if self.game_start_time is not None:
+        if self.game_start_time is not None and self.game_is_on:
+            # Send action to game avatar (if not rest command)
+            if action_idx in [1, 2, 3]:
+                logging.info(f'Sending: {action_idx}')
+                self.game_player.sendCommand(action_idx)
+
+            # Update chronogram source (if race started)
             ts = time.time() - self.game_start_time
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.expected_action[0]],
