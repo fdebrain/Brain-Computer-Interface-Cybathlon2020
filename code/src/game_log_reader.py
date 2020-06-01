@@ -32,16 +32,23 @@ class GameLogReader(QtCore.QRunnable):
         loglines = self.follow(logfile)
 
         for line in loglines:
-            if ("start race" in line):
+            if "start race" in line:
                 self.notify((0, 'Game start'))
-
-            # Exctract expected actions (groundtruth) & notify player widget
-            elif ("p{}_expectedInput".format(self.player_idx) in line):
+            elif f"p{self.player_idx}_expectedInput" in line:
+                # Exctract expected actions (groundtruth) & notify player widget
                 if "none" in line:
                     expected_action = self.log2actions['none']
                 else:
                     action = line.split(" ")[-1].strip()
                     expected_action = self.log2actions[action]
-
                 logging.info(f"Groundtruth: {expected_action[1]}")
                 self.notify(expected_action)
+            elif f"p{self.player_idx}_finish" in line:
+                # Detect if player finishes game
+                self.notify((0, 'Game end'))
+            elif "puase race" in line or "puase race" in line:
+                # Detect pause (there is a typo in the game automatic logger)
+                self.notify((0, 'Pause'))
+            elif "resume paused race" in line:
+                # Detect resume from pause
+                self.notify((0, 'Resume'))

@@ -123,6 +123,15 @@ class PlayerWidget:
             self.parent.add_next_tick_callback(self.clear_chronogram)
             self.game_start_time = time.time()
             self.parent.add_next_tick_callback(self.create_action_callback)
+        elif action_name == 'Game end':
+            logging.info('Game end')
+            self.parent.add_next_tick_callback(self.remove_action_callback)
+        elif action_name == 'Pause':
+            logging.info('Pause game')
+            self.parent.add_next_tick_callback(self.remove_action_callback)
+        elif action_name == 'Resume':
+            logging.info('Resume game')
+            self.parent.add_next_tick_callback(self.create_action_callback)
 
         # Send groundtruth to microcontroller
         if self.sending_events:
