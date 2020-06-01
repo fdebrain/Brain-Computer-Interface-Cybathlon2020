@@ -120,6 +120,7 @@ class PlayerWidget:
         # Reset timer & start action callback (autopilot/prediction)
         if action_name == 'Game start':
             logging.info('Game start')
+            self.parent.add_next_tick_callback(self.clear_chronogram)
             self.game_start_time = time.time()
             self.parent.add_next_tick_callback(self.create_action_callback)
 
@@ -204,6 +205,12 @@ class PlayerWidget:
         self.thread_log.clear()
         del self.game_log_reader
 
+    def clear_chronogram(self):
+        logging.info('Clear chronogram')
+        self.chrono_source.data = dict(ts=[], y_true=[],
+                                       y_pred=[])
+        self.div_info.text = ''
+
     def start_game_process(self):
         logging.info('Lauching Cybathlon game')
         self.n_old_logs = len(self.available_logs)
@@ -240,6 +247,7 @@ class PlayerWidget:
         self.radio_mode.active = 0
         self.button_launch_game.label = 'Lauching...'
         self.button_launch_game.button_type = 'warning'
+        self.parent.add_next_tick_callback(self.on_launch_game)
 
     def on_launch_game(self):
         self.start_game_process()
@@ -407,7 +415,7 @@ class PlayerWidget:
         # Button - Launch Cybathlon game in new window
         self.button_launch_game = Button(label='Launch Game',
                                          button_type='primary')
-        self.button_launch_game.on_click(self.on_launch_game)
+        self.button_launch_game.on_click(self.on_launch_game_start)
 
         # Button - Connect to LSL stream
         self.button_lsl = Button(label='Connect to LSL')
