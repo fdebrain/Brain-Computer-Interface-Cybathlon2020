@@ -40,6 +40,9 @@ class WarmUpWidget:
         self.signal = None
         self.current_pred = (0, 'Rest')
 
+        # Feedback images
+        self.static_folder = Path('code/static')
+
     @property
     def available_models(self):
         ml_models = [p.name for p in self.models_path.glob('*.pkl')]
@@ -155,13 +158,15 @@ class WarmUpWidget:
             f'<b>Prediction:</b> {self.current_pred} <br>' \
 
         if self.pred2encoding[action_idx] == 'Headlight':
-            self.image.text = "<img src='code/static/bolt-solid.png' width='200' height='200' text-align='center'>"
+            src = self.static_folder / 'bolt-solid.png'
         elif self.pred2encoding[action_idx] == 'Left':
-            self.image.text = "<img src='code/static/arrow-left-solid.png' width='200' height='200' text-align='center'>"
+            src = self.static_folder / 'arrow-left-solid.png'
         elif self.pred2encoding[action_idx] == 'Right':
-            self.image.text = "<img src='code/static/arrow-right-solid.png' width='200' height='200' text-align='center'>"
+            src = self.static_folder / 'arrow-right-solid.png'
         else:
-            self.image.text = "<img src='code/static/retweet-solid.png' width='200' height='200' text-align='center'>"
+            src = self.static_folder / 'retweet-solid.png'
+
+        self.image.text = f"<img src={src} width='200' height='200' text-align='center'>"
 
     def on_lsl_connect_start(self):
         if self.lsl_reader is not None:
