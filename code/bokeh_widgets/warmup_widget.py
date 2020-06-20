@@ -42,6 +42,10 @@ class WarmUpWidget:
 
         # Feedback images
         self.static_folder = Path('code/static')
+        self.action2image = {'Left': 'arrow-left-solid.png',
+                             'Right': 'arrow-right-solid.png',
+                             'Rest': 'retweet-solid.png',
+                             'Headlight': 'bolt-solid.png'}
 
     @property
     def available_models(self):
@@ -157,15 +161,8 @@ class WarmUpWidget:
         self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
             f'<b>Prediction:</b> {self.current_pred} <br>' \
 
-        if self.pred2encoding[action_idx] == 'Headlight':
-            src = self.static_folder / 'bolt-solid.png'
-        elif self.pred2encoding[action_idx] == 'Left':
-            src = self.static_folder / 'arrow-left-solid.png'
-        elif self.pred2encoding[action_idx] == 'Right':
-            src = self.static_folder / 'arrow-right-solid.png'
-        else:
-            src = self.static_folder / 'retweet-solid.png'
-
+        src = self.static_folder / \
+            self.action2image[self.pred2encoding[action_idx]]
         self.image.text = f"<img src={src} width='200' height='200' text-align='center'>"
 
     def on_lsl_connect_start(self):
