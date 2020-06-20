@@ -153,9 +153,10 @@ class WarmUpWidget:
         self.current_pred = (action_idx, self.pred2encoding[action_idx])
 
         # Update chronogram source (if race started)
-        ts = time.time() - self.lsl_start_time
-        self.chrono_source.stream(dict(ts=[ts],
-                                       y_pred=[action_idx]))
+        if self.lsl_start_time is not None:
+            ts = time.time() - self.lsl_start_time
+            self.chrono_source.stream(dict(ts=[ts],
+                                           y_pred=[action_idx]))
 
         # Update information display
         self.div_info.text = f'<b>Model:</b> {model_name} <br>' \
@@ -218,7 +219,7 @@ class WarmUpWidget:
 
         # Convert timestamps in seconds
         if self.lsl_start_time is None:
-            self.lsl_start_time = ts[0]
+            self.lsl_start_time = time.time()
         ts -= self.lsl_start_time
 
         # Clean signal and reference
