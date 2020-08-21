@@ -18,7 +18,7 @@ Master thesis carried out in NCM Lab at ETHZ between March and September 2019.
 - ***1. Download Anaconda (Python 3.7 distribution):*** [conda 4.7.12](https://www.anaconda.com/distribution/)
 - ***2. Clone/download the current repository***
 - ***3. Create Conda environment:***
-	- `conda create env -f environment.yml`
+	- `conda env create -f environment.yml`
 - ***4. Install extra dependencies:***
     - `conda activate cybathlon`
 	- `pip install -e .`
