@@ -79,4 +79,4 @@ master-thesis-cybathlon
 - `conda activate cybathlon`
 - `bokeh serve bokeh_dashboard --show`
 
-![Player interface](Reports/images/player_lsl_predict.png)
+![Player interface](Reports/images/player_tab.png)
