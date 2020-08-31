@@ -14,9 +14,10 @@ dependencies:
   - bokeh==2.0.2
   - pyqtgraph==0.11.*
   - tensorflow==2.1.0
+  - tensorflow-estimator==2.1.0
   - scikit-optimize==0.7.4
-  - keras-tuner==1.0.1
   - pip:
     - mne==0.18
     - pylsl==1.13.1
-    - tensorflow-addons
+    - tensorflow-addons==0.9.1
+    - keras-tuner==1.0.1
