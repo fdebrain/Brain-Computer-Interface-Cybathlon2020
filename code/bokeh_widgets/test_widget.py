@@ -19,7 +19,6 @@ from src.pipeline import load_pipeline
 class TestWidget:
     def __init__(self):
         self.data_path = Path('../Datasets/Pilots/Pilot_2')
-        self.models_path = Path('./saved_models')
         self.encodings = {2: 'Rest', 4: 'Left', 6: 'Right', 8: 'Headlight'}
         self.gd2pred = {2: 0, 4: 1, 6: 2, 8: 3}
         self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
@@ -27,8 +26,11 @@ class TestWidget:
         self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
                                                    y_pred=[]))
 
+        # Model
+        self.models_path = Path('./saved_models')
         self.n_crops = 10
         self.crop_len = 0.5
+
     @property
     def available_sessions(self):
         sessions = self.data_path.glob('*')
@@ -112,6 +114,7 @@ class TestWidget:
         # Get events & decode
         events = mne.events_from_annotations(raw, verbose=False)[0]
         decoded_events = []
+
         for ts, _, marker in events:
             raw_label = str(marker)
             if len(raw_label) == 2:
