@@ -92,6 +92,9 @@ class WarmUpWidget:
     def channel_idx(self):
         return int(self.select_channel.value.split('-')[0])
 
+    def on_settings_change(self, attr, old, new):
+        self.plot_stream.visible = 0 in new
+
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
         self.select_model.options = self.available_models
@@ -277,7 +280,8 @@ class WarmUpWidget:
 
         # Checkbox - Choose settings
         self.div_settings = Div(text='<b>Settings</b>', align='center')
-        self.checkbox_settings = CheckboxButtonGroup(labels=['Send events'])
+        self.checkbox_settings = CheckboxButtonGroup(labels=['Show signal'])
+        self.checkbox_settings.on_change('active', self.on_settings_change)
 
         # Checkbox - Choose preprocessing steps
         self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
@@ -295,7 +299,8 @@ class WarmUpWidget:
                                   x_axis_label='Time [s]',
                                   y_axis_label='Amplitude',
                                   plot_height=500,
-                                  plot_width=800)
+                                  plot_width=800,
+                                  visible=False)
         self.plot_stream.line(x='ts', y='data', source=self.channel_source)
 
         # Plot - Chronogram prediction vs results
