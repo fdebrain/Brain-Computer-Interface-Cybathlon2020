@@ -16,7 +16,6 @@ from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
 from src.pipeline import load_pipeline
-from src.preprocessing import cropping, preprocessing
 from src.models import predict
 from src.lsl_client import LSLClient
 from src.game_player import GamePlayer, CommandSenderPort
@@ -66,6 +65,8 @@ class PlayerWidget:
         self.model = None
         self.signal = None
         self.current_pred = (0, 'Rest')
+        self.n_crops = 10
+        self.crop_len = 0.5
 
     @property
     def available_models(self):
@@ -315,22 +316,16 @@ class PlayerWidget:
             # Selecting last 1s of signal
             X = X[np.newaxis, :, -self.fs:]
 
-            # Preprocess
-            X = preprocessing(X, self.fs, self.should_reref,
-                              self.should_filter,
-                              self.should_standardize)
-
-            # Cropping
-            X, _ = cropping(X, [None], self.fs,
-                            n_crops=10, crop_len=0.5)
-
             # If no model
             if self.model is None:
                 action_idx = 0
                 logging.warning('Rest action sent by default!'
                                 'Please select a model.')
             else:
-                action_idx = predict(X, self.model, self.is_convnet)
+                action_idx = predict(X, self.model, self.is_convnet,
+                                     self.n_crops, self.crop_len, self.fs,
+                                     self.should_reref, self.should_filter,
+                                     self.should_standardize)
                 logging.info(f'Action idx: {action_idx}')
 
         self.current_pred = (action_idx, self.pred2encoding[action_idx])

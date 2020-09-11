@@ -9,6 +9,7 @@ from .feature_extraction_functions.csp import CSP
 from .feature_extraction_functions.fbcsp import FBCSP
 from .feature_extraction_functions.riemann import Riemann
 from .feature_extraction_functions.convnets import ShallowConvNet
+from .preprocessing import cropping, preprocessing
 
 # Reproducibility
 seed_value = 0
@@ -66,7 +67,7 @@ def get_ConvNet_model():
     return model, search_space
 
 
-def predict(X, models, is_convnet):
+def predict(X, models, is_convnet, n_crops=10, crop_len=0.5, fs=500, should_reref=True, should_filter=False, should_standardize=True):
     """Return prediction of a trained model given input EEG data.
 
     Arguments:htop
@@ -79,6 +80,12 @@ def predict(X, models, is_convnet):
     """
     if not isinstance(models, list):
         models = [models]
+
+    # Preprocess
+    X = preprocessing(X, fs, should_reref, should_filter, should_standardize)
+
+    # Cropping
+    X, _ = cropping(X, [None], fs, n_crops, crop_len)
 
     if is_convnet:
         # ConvNet case - Adapt input shape & convert probabilities to int

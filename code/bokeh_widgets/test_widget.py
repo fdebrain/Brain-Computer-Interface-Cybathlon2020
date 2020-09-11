@@ -12,9 +12,7 @@ from bokeh.models import ColumnDataSource, CheckboxButtonGroup
 from bokeh.layouts import row, column
 
 from src.vhdr_formatter import load_vhdr
-from src.preprocessing import preprocessing
 from src.models import predict
-from src.preprocessing import cropping
 from src.pipeline import load_pipeline
 
 
@@ -29,6 +27,8 @@ class TestWidget:
         self.chrono_source = ColumnDataSource(dict(ts=[], y_true=[],
                                                    y_pred=[]))
 
+        self.n_crops = 10
+        self.crop_len = 0.5
     @property
     def available_sessions(self):
         sessions = self.data_path.glob('*')
@@ -167,17 +167,11 @@ class TestWidget:
             start_idx = end_idx - self.win_len
             epoch = self._data['values'][np.newaxis, :, start_idx:end_idx]
 
-            # Preprocess
-            epoch = preprocessing(epoch, self.fs, self.should_reref,
-                                  self.should_filter,
-                                  self.should_standardize)
-
-            # Cropping
-            epochs, _ = cropping(epoch, [groundtruth], self.fs,
-                                 n_crops=10, crop_len=0.5)
-
             # Predict
-            y_pred = predict(epochs, self.pipeline, self.is_convnet)
+            y_pred = predict(epoch, self.pipeline, self.is_convnet,
+                             self.n_crops, self.crop_len,
+                             self.should_reref, self.should_filter,
+                             self.should_standardize)
 
             self.chrono_source.stream(dict(ts=[ts],
                                            y_true=[self.gd2pred[groundtruth]],
