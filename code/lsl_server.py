@@ -21,17 +21,17 @@ if __name__ == '__main__':
 
     # Stream data in real-time
     host = 'pilot_stream'
-    streamer = MockLSLStream(host, raw, 'eeg', time_dilation=1)
-    streamer.start()
-    logging.info(
-        f'Real-time streaming from EEG recording at {streamer._sfreq} Hz')
 
-    counter = 0
-    countdown = time.time()
-    while counter < raw.n_times / raw.info['sfreq']:
-        if time.time() - countdown > 1:
-            print(f'Current timestamp: {streamer._sfreq*counter}')
-            countdown = time.time()
-            counter += 1
+    with MockLSLStream(host, raw, 'eeg', time_dilation=1) as streamer:
+        counter = 0
+        countdown = time.time()
+        logging.info(
+            f'Real-time streaming from EEG recording at {streamer._sfreq} Hz')
 
-    streamer.stop()
+        while counter < raw.n_times / raw.info['sfreq']:
+            elapsed_time = time.time() - countdown
+            if elapsed_time > 1.:
+                print(
+                    f'Current timestamp: {streamer._sfreq*counter:.2f} - Elapsed: {elapsed_time:.2f}')
+                counter += elapsed_time
+                countdown = time.time()
