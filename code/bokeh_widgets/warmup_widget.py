@@ -14,6 +14,7 @@ from src.pipeline import load_pipeline
 from src.preprocessing import cropping, preprocessing
 from src.models import predict
 from src.lsl_client import LSLClient
+from src.lsl_recorder import LSLRecorder
 
 
 class WarmUpWidget:
@@ -196,7 +197,23 @@ class WarmUpWidget:
             logging.info(f'No LSL stream - {traceback.format_exc()}')
             self.button_lsl.label = 'Can\'t find stream'
             self.button_lsl.button_type = 'danger'
-            self.lsl_reader = None
+    def on_lsl_record_toggle(self, active):
+        if active:
+            try:
+                self.lsl_recorder = LSLRecorder(self.h5_name,
+                                                self.n_channels,
+                                                self.fs)
+            except Exception:
+                self.reset_lsl()
+                self.button_record.label = 'Recording failed'
+                self.button_record.button_type = 'danger'
+
+            self.button_record.label = 'Stop recording'
+            self.button_record.button_type = 'success'
+        else:
+            self.reset_lsl()
+            self.button_record.label = 'Start recording'
+            self.button_record.button_type = 'primary'
 
     def create_lsl_callback(self):
         if self.callback_lsl_id is None:
@@ -248,9 +265,10 @@ class WarmUpWidget:
             self.button_lsl.button_type = 'danger'
 
     def create_widget(self):
-        # Button - Connect to LSL stream
-        self.button_lsl = Button(label='Connect to LSL')
-        self.button_lsl.on_click(self.on_lsl_connect_start)
+        # Toggle - Start/stop LSL stream recording
+        self.button_record = Toggle(label='Start Recording',
+                                    button_type='primary')
+        self.button_record.on_click(self.on_lsl_record_toggle)
 
         # Select - Choose pre-trained model
         self.select_model = Select(title="Select pre-trained model")
@@ -299,6 +317,7 @@ class WarmUpWidget:
 
         # Create layout
         column1 = column(self.button_lsl,
+                         self.button_record,
                          self.select_model,
                          self.select_channel,
                          self.div_settings, self.checkbox_settings,
