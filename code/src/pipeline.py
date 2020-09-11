@@ -7,7 +7,6 @@ from sklearn.pipeline import Pipeline
 from tensorflow.keras.models import load_model
 
 from .preprocessing import get_preprocessor
-from .feature_extraction_functions.convnets import ShallowConvNet
 from .models import get_model
 
 
@@ -33,7 +32,7 @@ def load_pipeline(model_path):
         ValueError: Model suffix not recognised
 
     Returns:
-        object -- Model
+        model {object} -- Model
     """
     logging.info(f'Loading model {model_path}')
 

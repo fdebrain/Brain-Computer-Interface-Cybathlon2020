@@ -324,7 +324,7 @@ class FormatterWidget:
         self.slider_pre_event = Slider(start=-10, end=10, value=2,
                                        title='Window start (s before event)')
         self.slider_pre_event.on_change('value', self.on_extract_change)
-        self.slider_post_event = Slider(start=-10, end=15, value=4,
+        self.slider_post_event = Slider(start=-15, end=15, value=4,
                                         title='Window end (s after event)')
         self.slider_post_event.on_change('value', self.on_extract_change)
 
