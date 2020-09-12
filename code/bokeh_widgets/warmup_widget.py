@@ -2,6 +2,7 @@ import logging
 import time
 from pathlib import Path
 import traceback
+import copy
 
 import numpy as np
 from bokeh.plotting import figure
@@ -17,27 +18,28 @@ from src.action_predictor import ActionPredictor
 
 class WarmUpWidget:
     def __init__(self, parent=None):
+        self.parent = parent
         self.fs = 500
         self.n_channels = 63
         self.t0 = 0
+        self.last_ts = 0
 
         # Chronogram
         self.chrono_source = ColumnDataSource(dict(ts=[], y_pred=[]))
         self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
 
         # LSL stream reader
-        self.parent = parent
         self.lsl_every_s = 0.1
         self.lsl_reader = None
         self.lsl_start_time = None
         self.thread_lsl = QtCore.QThreadPool()
-        self.channel_source = ColumnDataSource(dict(ts=[], data=[]))
-        self._lsl_data, self.lsl_ts = None, None
+        self.channel_source = ColumnDataSource(dict(ts=[], eeg=[]))
+        self._lsl_data = (None, None)
 
         # LSL stream recorder
+        self.h5_name = 'warmup_recording'
         self.lsl_recorder = None
-        self.h5_name = 'warmup_recording.h5'
-        # self.thread_record = QtCore.QThreadPool()
+        self.thread_record = QtCore.QThreadPool()
 
         # Model
         self.models_path = Path('./saved_models')
@@ -72,14 +74,6 @@ class WarmUpWidget:
     def lsl_data(self, data):
         self._lsl_data = data
         self.parent.add_next_tick_callback(self.update_signal)
-
-    @property
-    def lsl_ts(self):
-        return self._lsl_ts
-
-    @lsl_ts.setter
-    def lsl_ts(self, ts):
-        self._lsl_ts = ts
 
     @property
     def available_models(self):
@@ -125,6 +119,13 @@ class WarmUpWidget:
     def channel_idx(self):
         return int(self.select_channel.value.split('-')[0])
 
+    def reset_lsl(self):
+        if self.lsl_reader:
+            self.lsl_reader.should_stream = False
+            self.lsl_reader = None
+            self.lsl_start_time = None
+            self.thread_lsl.clear()
+
     def reset_predictor(self):
         self.model_info.text = f'<b>Model:</b> None'
         self.pred_info.text = f'<b>Prediction:</b> None'
@@ -134,11 +135,10 @@ class WarmUpWidget:
             self.predictor = None
             self.thread_pred.clear()
 
-    def reset_lsl(self):
-        if self.lsl_reader:
-            self.lsl_reader.should_stream = False
-            self.lsl_reader = None
-            self.thread_lsl.clear()
+    def reset_recorder(self):
+        if self.lsl_recorder:
+            self.lsl_recorder.close_h5()
+            self.lsl_recorder = None
 
     def on_settings_change(self, attr, old, new):
         self.plot_stream.visible = 0 in new
@@ -149,9 +149,7 @@ class WarmUpWidget:
 
         # Delete existing predictor thread
         if self.predictor is not None:
-            logging.info(f'Remove old predictor thread')
             self.reset_predictor()
-
             if new == '':
                 return
 
@@ -166,12 +164,12 @@ class WarmUpWidget:
 
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select new channel {new}')
-        self.channel_source.data['data'] = []
+        self.channel_source.data['eeg'] = []
         self.plot_stream.yaxis.axis_label = f'Amplitude ({new})'
 
-    def reset_chronogram(self):
-        logging.info('Reset chronogram')
+    def reset_plots(self):
         self.chrono_source.data = dict(ts=[], y_pred=[])
+        self.channel_source.data = dict(ts=[], eeg=[])
 
     def update_prediction(self):
         # Update chronogram source
@@ -181,25 +179,31 @@ class WarmUpWidget:
             self.chrono_source.stream(dict(ts=[ts],
                                            y_pred=[action_idx]))
 
-        # Update information display (might cause )
+        # Update information display (might cause delay)
         self.pred_info.text = f'<b>Prediction:</b> {self.current_pred}'
         src = self.static_folder / \
             self.action2image[self.pred2encoding[action_idx]]
         self.image.text = f"<img src={src} width='200' height='200' text-align='center'>"
+
+        # Save prediction as event
+        if self.lsl_recorder is not None:
+            self.lsl_recorder.save_event(copy.deepcopy(self.last_ts),
+                                         copy.deepcopy(action_idx))
 
     def on_lsl_connect_toggle(self, active):
         if active:
             # Connect to LSL stream
             self.button_lsl.label = 'Seaching...'
             self.button_lsl.button_type = 'warning'
-            self.parent.add_next_tick_callback(self.on_lsl_connect)
+            self.reset_plots()
+            self.parent.add_next_tick_callback(self.start_lsl_thread)
         else:
             self.reset_lsl()
             self.reset_predictor()
             self.button_lsl.label = 'LSL Disconnected'
             self.button_lsl.button_type = 'danger'
 
-    def on_lsl_connect(self):
+    def start_lsl_thread(self):
         try:
             self.lsl_reader = LSLClient(self, fetch_every_s=self.lsl_every_s)
             self.fs = self.lsl_reader.fs
@@ -222,36 +226,24 @@ class WarmUpWidget:
                 self.lsl_recorder = LSLRecorder(self.h5_name,
                                                 self.n_channels,
                                                 self.fs)
+                self.thread_record.start(self.lsl_recorder)
             except Exception:
-                self.reset_lsl()
+                self.reset_recorder()
                 self.button_record.label = 'Recording failed'
                 self.button_record.button_type = 'danger'
 
             self.button_record.label = 'Stop recording'
             self.button_record.button_type = 'success'
         else:
-            self.reset_lsl()
+            self.reset_recorder()
             self.button_record.label = 'Start recording'
             self.button_record.button_type = 'primary'
 
     def update_signal(self):
-        data, ts = self.lsl_data, self.lsl_ts
+        ts, eeg = self.lsl_data
+        self.last_ts = ts[-1]
 
-        # Truncate if different length
-        len_ts = len(ts)
-        len_data = data.shape[-1]
-        if len_ts > len_data:
-            logging.info(f'Truncate ts by {len_ts - len_data} values')
-            ts = ts[:len_data]
-        elif len_ts < len_data:
-            logging.info(f'Truncate data by {len_data - len_ts} values')
-            data = data[:, :len_ts]
-
-        if data is None:
-            logging.info('Data is empty')
-            return
-
-        if len(data.shape) == 1:
+        if ts.shape[0] != eeg.shape[-1]:
             logging.info('Skipping data points (bad format)')
             return
 
@@ -259,22 +251,20 @@ class WarmUpWidget:
         if self.lsl_start_time is None:
             self.lsl_start_time = time.time()
             self.t0 = ts[0]
-        ts -= self.t0
 
         # Update source display
         ch = self.channel_idx
-        self.channel_source.stream(dict(ts=ts, data=data[ch, :]),
+        self.channel_source.stream(dict(ts=ts-self.t0, eeg=eeg[ch, :]),
                                    rollover=int(2 * self.fs))
 
         # Update signal
-        chunk_size = data.shape[-1]
+        chunk_size = eeg.shape[-1]
         self.input_signal = np.roll(self.input_signal, -chunk_size, axis=-1)
-        self.input_signal[:, -chunk_size:] = data
+        self.input_signal[:, -chunk_size:] = eeg
 
         # Record signal
         if self.lsl_recorder is not None:
-            print('Recording')
-            self.lsl_recorder.save_data(data, ts)
+            self.lsl_recorder.save_data(copy.deepcopy(ts), copy.deepcopy(eeg))
 
     def create_widget(self):
         # Toggle - Connect to LSL stream
@@ -314,7 +304,7 @@ class WarmUpWidget:
                                   plot_height=500,
                                   plot_width=800,
                                   visible=False)
-        self.plot_stream.line(x='ts', y='data', source=self.channel_source)
+        self.plot_stream.line(x='ts', y='eeg', source=self.channel_source)
 
         # Plot - Chronogram prediction vs results
         self.plot_chronogram = figure(title='Chronogram',

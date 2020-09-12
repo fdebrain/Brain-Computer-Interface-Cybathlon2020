@@ -1,4 +1,5 @@
 import time
+import copy
 import logging
 import numpy as np
 from pylsl import StreamInlet, resolve_streams
@@ -9,6 +10,7 @@ class LSLClient(QtCore.QRunnable):
     def __init__(self, parent, fetch_every_s=0.1):
         super().__init__()
         self.parent = parent
+        self.ts, self.eeg = [], []
         self.fetch_every_s = fetch_every_s
         self.create_stream()
         self.should_stream = True
@@ -19,7 +21,6 @@ class LSLClient(QtCore.QRunnable):
 
         if len(available_streams) > 0:
             self.stream_reader = StreamInlet(available_streams[0],
-                                             max_chunklen=1,
                                              recover=False)
 
             # Extract stream info
@@ -43,22 +44,26 @@ class LSLClient(QtCore.QRunnable):
     def get_data(self):
         try:
             # Fetch available data from lsl stream and convert to numpy array
-            data, ts = self.stream_reader.pull_chunk()
-            self.data = np.array(data, dtype=np.float32)
-            self.ts = np.array(ts)
+            eeg, ts = self.stream_reader.pull_chunk()
+            self.eeg = np.array(eeg, dtype=np.float32)
+            self.ts = np.array(ts, dtype=np.float32)
         except Exception as e:
             logging.info(f'{e} - No more data')
 
     def notify(self):
-        if len(self.data) > 0:
+        if len(self.eeg) > 0:
             # Manipulate data to be of shape (n_channels, n_timestamps)
-            self.data = np.swapaxes(self.data, 1, 0)
-            self.parent.lsl_data = self.data
-            self.parent.lsl_ts = self.ts
+            self.eeg = np.swapaxes(self.eeg, 1, 0)
+            self.parent.lsl_data = (copy.deepcopy(self.ts),
+                                    copy.deepcopy(self.eeg))
 
     @QtCore.pyqtSlot()
     def run(self):
+        logging.info('Start LSL stream')
         while self.should_stream is True:
+            countdown = time.time()
             self.get_data()
             self.notify()
-            time.sleep(self.fetch_every_s)
+            delay = time.time() - countdown
+            time.sleep(self.fetch_every_s - delay)
+        logging.info('Stop LSL stream')
