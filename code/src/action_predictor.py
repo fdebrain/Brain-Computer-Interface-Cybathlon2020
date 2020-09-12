@@ -49,6 +49,7 @@ class ActionPredictor(QtCore.QRunnable):
 
     @QtCore.pyqtSlot()
     def run(self):
+        logging.info('Start action predictor')
         while self.should_predict is True:
             countdown = time.time()
             X = copy.deepcopy(self.parent.input_signal)
@@ -56,3 +57,4 @@ class ActionPredictor(QtCore.QRunnable):
             self.notify()
             delay = time.time() - countdown
             time.sleep(self.predict_every_s - delay)
+        logging.info('Stop action predictor')
