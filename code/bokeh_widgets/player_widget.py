@@ -1,9 +1,9 @@
+import os
 import logging
 import copy
 import subprocess
 import sys
 import time
-from pathlib import Path
 import traceback
 
 import numpy as np
@@ -11,15 +11,16 @@ import serial
 import serial.tools.list_ports
 from bokeh.plotting import figure
 from bokeh.layouts import row, column
-from bokeh.models import ColumnDataSource
-from bokeh.models import Button, Toggle, Div, Select, CheckboxButtonGroup, RadioButtonGroup
+from bokeh.models import (ColumnDataSource, Button, Toggle, Div, Select,
+                          CheckboxButtonGroup)
 from pyqtgraph.Qt import QtCore
 from sklearn.metrics import accuracy_score
 
+from config import main_config, game_config
 from src.lsl_client import LSLClient
 from src.lsl_recorder import LSLRecorder
 from src.action_predictor import ActionPredictor
-from src.game_player import GamePlayer, CommandSenderPort
+from src.game_player import CommandSenderPort
 from src.game_log_reader import GameLogReader
 from .utils import clean_log_directory
 
@@ -27,16 +28,15 @@ from .utils import clean_log_directory
 class PlayerWidget:
     def __init__(self, parent=None):
         self.parent = parent
-        self.player_idx = 1
-        self.fs = 500
-        self.n_channels = 63
+        self.fs = main_config['fs']
+        self.n_channels = main_config['n_channels']
         self.t0 = 0
         self.last_ts = 0
 
-        # # Game log reader (separate thread)
-        self.game_logs_path = Path('../game/log')
+        # Game log reader (separate thread)
+        self.game_logs_path = game_config['game_logs_path']
         self.game_log_reader = None
-        self._expected_action = None
+        self._expected_action = (0, 'Rest')
         self.thread_log = QtCore.QThreadPool()
 
         # Game window (separate process)
@@ -44,24 +44,21 @@ class PlayerWidget:
         self.game = None
 
         # Port event sender
-        self.ports = Path('/dev/ttyACM*')
+        self.micro_path = main_config['micro_path']
         self.port_sender = None
 
         # Game player
-        self.game_path = Path('../game/brainDriver')
-        self.game_player = GamePlayer(self.player_idx)
+        self.game_path = game_config['game_path']
+        self.player_idx = game_config['player_idx']
         self.game_start_time = None
-        self.fake_delay_min = 0.5
-        self.fake_delay_max = 1
 
         # Chronogram
         self.chrono_source = ColumnDataSource(dict(ts=[],
                                                    y_true=[],
                                                    y_pred=[]))
-        self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
+        self.pred_decoding = main_config['pred_decoding']
 
         # LSL stream reader
-        self.lsl_every_s = 0.1
         self.lsl_reader = None
         self.lsl_start_time = None
         self.thread_lsl = QtCore.QThreadPool()
@@ -69,18 +66,19 @@ class PlayerWidget:
         self._lsl_data = (None, None)
 
         # LSL stream recorder
-        self.h5_name = 'game_recording'
+        if not os.path.isdir(main_config['record_path']):
+            os.mkdir(main_config['record_path'])
+        self.record_path = main_config['record_path']
+        self.record_name = game_config['record_name']
         self.lsl_recorder = None
-        self.thread_record = QtCore.QThreadPool()
+        # self.thread_record = QtCore.QThreadPool()
 
-        # Model
-        self.models_path = Path('./saved_models')
+        # Predictor
+        self.models_path = main_config['models_path']
         self.input_signal = np.zeros((self.n_channels, 4 * self.fs))
-        self.n_crops = 10
-        self.crop_len = 0.5
         self.predictor = None
         self.thread_pred = QtCore.QThreadPool()
-        self._current_pred = (0, 'Rest')
+        self._pred_action = (0, 'Rest')
 
     @property
     def lsl_data(self):
@@ -92,13 +90,14 @@ class PlayerWidget:
         self.parent.add_next_tick_callback(self.update_signal)
 
     @property
-    def current_pred(self):
-        return self._current_pred
+    def pred_action(self):
+        return self._pred_action
 
-    @current_pred.setter
-    def current_pred(self, action_idx):
-        self._current_pred = (action_idx, self.pred2encoding[action_idx])
-        self.parent.add_next_tick_callback(self.update_prediction)
+    @pred_action.setter
+    def pred_action(self, val_tuple):
+        self._pred_action = val_tuple
+        if self.game_start_time is not None:
+            self.parent.add_next_tick_callback(self.update_prediction)
 
     @property
     def expected_action(self):
@@ -110,13 +109,19 @@ class PlayerWidget:
         action_idx, action_name = action
         self._expected_action = action
 
+        # Start autoplay predictor when game starts + reset chronogram (if multiple consecutive runs)
         if action_name == 'Game start':
-            self.parent.add_next_tick_callback(self.reset_chronogram)
             self.game_start_time = time.time()
+            self.parent.add_next_tick_callback(self.reset_chronogram)
+            if self.modelfile == 'AUTOPLAY':
+                self.parent.add_next_tick_callback(self.start_predictor_thread)
         elif action_name in ['Game end', 'Pause', 'Resume']:
             self.reset_predictor()
-        else:
-            self.parent.add_next_tick_callback(self.update_prediction)
+
+        # Save groundtruth as event
+        if self.lsl_recorder is not None:
+            self.lsl_recorder.save_event(copy.deepcopy(self.last_ts),
+                                         copy.deepcopy(action_idx))
 
         # Send groundtruth to microcontroller
         if self.sending_events:
@@ -128,7 +133,7 @@ class PlayerWidget:
 
     @property
     def available_logs(self):
-        logs = list(self.game_logs_path.glob('raceLog*.txt'))
+        logs = list(self.game_logs_path.glob(game_config['game_logs_pattern']))
         return sorted(logs)
 
     @property
@@ -167,7 +172,7 @@ class PlayerWidget:
     @property
     def available_ports(self):
         if sys.platform == 'linux':
-            ports = self.ports.glob('*')
+            ports = self.micro_path.glob('*')
             return [''] + [p.name for p in ports]
         elif sys.platform == 'win32':
             return [''] + [p.device for p in serial.tools.list_ports.comports()]
@@ -184,23 +189,6 @@ class PlayerWidget:
     def selected_settings(self):
         active = self.checkbox_settings.active
         return [self.checkbox_settings.labels[i] for i in active]
-
-    @property
-    def selected_preproc(self):
-        active = self.checkbox_preproc.active
-        return [self.checkbox_preproc.labels[i] for i in active]
-
-    @property
-    def should_reref(self):
-        return 'Rereference' in self.selected_preproc
-
-    @property
-    def should_filter(self):
-        return 'Filter' in self.selected_preproc
-
-    @property
-    def should_standardize(self):
-        return 'Standardize' in self.selected_preproc
 
     @property
     def accuracy(self):
@@ -227,7 +215,7 @@ class PlayerWidget:
             self.lsl_recorder = None
 
     def reset_plots(self):
-        self.chrono_source.data = dict(ts=[], y_pred=[])
+        self.chrono_source.data = dict(ts=[], y_pred=[], y_true=[])
         self.channel_source.data = dict(ts=[], eeg=[])
 
     def reset_game(self):
@@ -244,26 +232,15 @@ class PlayerWidget:
         self.chrono_source.data = dict(ts=[],
                                        y_true=[],
                                        y_pred=[])
-        self.div_info.text = ''
+        self.gd_info.text = ''
+        self.pred_info.text = ''
+        self.acc_info.text = ''
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
         self.select_model.options = self.available_models
-
-        # Delete existing predictor thread
-        if self.predictor is not None:
-            self.reset_predictor()
-            if new == 'AUTOPLAY':
-                return
-
-        try:
-            self.predictor = ActionPredictor(self, self.modelfile, self.fs,
-                                             predict_every_s=1)
-            self.thread_pred.start(self.predictor)
-            self.model_info.text = f'<b>Model:</b> {new}'
-        except Exception:
-            logging.error(f'Failed loading model {self.modelfile}')
-            self.reset_predictor()
+        self.model_info.text = f'<b>Model:</b> {new}'
+        self.parent.add_next_tick_callback(self.start_predictor_thread)
 
     def on_select_port(self, attr, old, new):
         logging.info(f'Select new port: {new}')
@@ -316,7 +293,6 @@ class PlayerWidget:
         self.thread_log.start(self.game_log_reader)
 
     def on_launch_game_start(self):
-        # self.radio_mode.active = 0
         self.button_launch_game.label = 'Lauching...'
         self.button_launch_game.button_type = 'warning'
         self.parent.add_next_tick_callback(self.on_launch_game)
@@ -328,63 +304,42 @@ class PlayerWidget:
         self.button_launch_game.button_type = 'success'
 
     def update_prediction(self):
-        # print(f'Game state: {self.game.poll()}')
         if not self.game_is_on:
             logging.info('Game window was closed')
             self.button_launch_game.label = 'Launch Game'
             self.button_launch_game.button_type = 'primary'
+            self.select_model.value = 'AUTOPLAY'
             self.reset_predictor()
             return
 
         groundtruth = self.expected_action[0]
-        if self.modelfile == 'AUTOPLAY':
-            action_idx = groundtruth
-            random_delay = (self.fake_delay_max - self.fake_delay_min) * \
-                np.random.random_sample() + self.fake_delay_min
-            time.sleep(random_delay)
-        else:
-            action_idx = self.current_pred[0]
+        action_idx = self.pred_action[0]
 
-        # Send action to game avatar (if not rest command)
-        if action_idx in [1, 2, 3]:
-            logging.info(f'Sending: {action_idx}')
-            self.game_player.sendCommand(action_idx)
-
-        # Update chronogram source (if race started)
+        # Update chronogram source
         ts = time.time() - self.game_start_time
         self.chrono_source.stream(dict(ts=[ts],
                                        y_true=[groundtruth],
                                        y_pred=[action_idx]))
 
         # Update information display
-        self.div_info.text = f'<b>Model:</b> {self.model_name} <br>' \
-            f'<b>Groundtruth:</b> {self.expected_action} <br>' \
-            f'<b>Prediction:</b> {self.current_pred} <br>' \
-            f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
-
-        # Save prediction as event
-        if self.lsl_recorder is not None:
-            self.lsl_recorder.save_event(copy.deepcopy(self.last_ts),
-                                         copy.deepcopy(action_idx))
+        self.gd_info = f'<b>Groundtruth:</b> {self.expected_action}'
+        self.pred_info = f'<b>Prediction:</b> {self.pred_action}'
+        self.acc_info = f'<b>Accuracy:</b> {self.accuracy:.2f}'
 
     def on_lsl_connect_toggle(self, active):
         if active:
             # Connect to LSL stream
             self.button_lsl.label = 'Seaching...'
             self.button_lsl.button_type = 'warning'
-            self.reset_plots()
             self.parent.add_next_tick_callback(self.start_lsl_thread)
         else:
             self.reset_lsl()
-            self.reset_predictor()
             self.button_lsl.label = 'LSL Disconnected'
             self.button_lsl.button_type = 'danger'
 
     def start_lsl_thread(self):
         try:
-            self.lsl_reader = LSLClient(self, fetch_every_s=self.lsl_every_s)
-            self.fs = self.lsl_reader.fs
-
+            self.lsl_reader = LSLClient(self)
             if self.lsl_reader is not None:
                 self.select_channel.options = [f'{i+1} - {ch}' for i, ch
                                                in enumerate(self.lsl_reader.ch_names)]
@@ -397,15 +352,30 @@ class PlayerWidget:
             self.button_lsl.button_type = 'danger'
             self.reset_lsl()
 
+    def start_predictor_thread(self):
+        # Delete existing predictor thread
+        if self.predictor is not None:
+            self.reset_predictor()
+
+        try:
+            self.predictor = ActionPredictor(self,
+                                             self.modelfile,
+                                             self.is_convnet)
+            self.thread_pred.start(self.predictor)
+        except Exception as e:
+            logging.error(f'Failed loading model {self.modelfile} - {e}')
+            self.select_model.value = 'AUTOPLAY'
+            self.reset_predictor()
+
     def on_lsl_record_toggle(self, active):
         if active:
             try:
-                self.lsl_recorder = LSLRecorder(self.h5_name,
-                                                self.n_channels,
-                                                self.fs)
-                self.thread_record.start(self.lsl_recorder)
+                self.lsl_recorder = LSLRecorder(self.record_path,
+                                                self.record_name)
+                self.lsl_recorder.open_h5()
+                # self.thread_record.start(self.lsl_recorder)
             except Exception:
-                self.reset_recorder
+                self.reset_recorder()
                 self.button_record.label = 'Recording failed'
                 self.button_record.button_type = 'danger'
 
@@ -475,13 +445,6 @@ class PlayerWidget:
                                                              'Send events'])
         self.checkbox_settings.on_change('active', self.on_settings_change)
 
-        # Checkbox - Choose preprocessing steps
-        self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
-        self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
-                                                            'Standardize',
-                                                            'Rereference'],
-                                                    active=[1, 2])
-
         # Select - Channel to visualize
         self.select_channel = Select(title='Select channel', value='1 - Fp1')
         self.select_channel.on_change('value', self.on_channel_change)
@@ -507,19 +470,22 @@ class PlayerWidget:
         self.plot_chronogram.cross(x='ts', y='y_pred', color='red',
                                    source=self.chrono_source,
                                    legend_label='Prediction')
-        self.plot_chronogram.legend.background_fill_alpha = 0.8
-        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
-        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
+        self.plot_chronogram.legend.background_fill_alpha = 0.6
+        self.plot_chronogram.yaxis.ticker = list(self.pred_decoding.keys())
+        self.plot_chronogram.yaxis.major_label_overrides = self.pred_decoding
 
         # Div - Display useful information
-        self.div_info = Div()
+        self.model_info = Div(text=f'<b>Model:</b> AUTOPLAY')
+        self.pred_info = Div()
+        self.gd_info = Div()
+        self.acc_info = Div()
 
         # Create layout
         column1 = column(self.button_launch_game, self.button_lsl,
                          self.button_record, self.select_model,
                          self.select_port, self.select_channel,
-                         self.div_settings, self.checkbox_settings,
-                         self.div_preproc, self.checkbox_preproc)
+                         self.div_settings, self.checkbox_settings)
         column2 = column(self.plot_stream, self.plot_chronogram)
-        column3 = column(self.div_info)
+        column3 = column(self.model_info, self.gd_info,
+                         self.pred_info, self.acc_info)
         return row(column1, column2, column3)
