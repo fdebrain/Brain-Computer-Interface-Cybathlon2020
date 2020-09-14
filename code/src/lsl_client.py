@@ -5,13 +5,15 @@ import numpy as np
 from pylsl import StreamInlet, resolve_streams
 from pyqtgraph.Qt import QtCore
 
+from config import main_config
+
 
 class LSLClient(QtCore.QRunnable):
-    def __init__(self, parent, fetch_every_s=0.1):
+    def __init__(self, parent):
         super().__init__()
         self.parent = parent
         self.ts, self.eeg = [], []
-        self.fetch_every_s = fetch_every_s
+        self.fetch_every_s = main_config['lsl_every_s']
         self.create_stream()
         self.should_stream = True
 
@@ -46,7 +48,8 @@ class LSLClient(QtCore.QRunnable):
             # Fetch available data from lsl stream and convert to numpy array
             eeg, ts = self.stream_reader.pull_chunk()
             self.eeg = np.array(eeg, dtype=np.float32)
-            self.ts = np.array(ts, dtype=np.float32)
+            self.ts = np.array(ts)
+            self.ts = self.ts.astype(np.float64)
         except Exception as e:
             logging.info(f'{e} - No more data')
 
