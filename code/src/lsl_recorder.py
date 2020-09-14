@@ -2,23 +2,26 @@ import os
 import logging
 import h5py
 import numpy as np
-from pyqtgraph.Qt import QtCore
+# from pyqtgraph.Qt import QtCore
+
+from config import main_config
 
 
-class LSLRecorder(QtCore.QRunnable):
-    def __init__(self, h5_name='test.h5', n_channels=63, fs=500, debug=False):
-        if os.path.isfile(h5_name):
-            h5_name += f'_{np.random.randint(0,9999)}'
-        self.h5_name = h5_name + '.h5'
-        self.fs = fs
-        self.n_channels = n_channels
-        self.should_record = True
+class LSLRecorder:
+    def __init__(self, recording_folder, filename, debug=False):
+        self.fs = main_config['fs']
+        self.n_channels = main_config['n_channels']
+
+        self.h5_path = recording_folder / filename
+        if os.path.isfile(self.h5_path):
+            self.h5_path = recording_folder / \
+                f'{filename[:-3]}_{np.random.randint(0, 9999)}.h5'
+            logging.info(self.h5_path)
         self.debug = debug
-        self.open_h5()
 
     def open_h5(self):
-        logging.info(f'Start recording in {self.h5_name}')
-        self.h5 = h5py.File(self.h5_name, 'a')
+        logging.info(f'Start recording in {self.h5_path}')
+        self.h5 = h5py.File(self.h5_path, 'a')
         self.ts_set = self.h5.create_dataset(name='ts',
                                              shape=(0,),
                                              maxshape=(None,),
