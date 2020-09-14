@@ -1,6 +1,5 @@
 
 import logging
-from pathlib import Path
 import traceback
 
 import numpy as np
@@ -14,16 +13,28 @@ from src.preprocessing import cropping
 from src.pipeline import get_pipeline, save_json, save_pipeline
 from src.trainer import train
 
+from config import main_config
+
 
 class TrainerWidget:
     def __init__(self):
-        self.data_path = Path('../Datasets/Pilots/Pilot_2')
-        self.save_path = Path('./saved_models')
+        self.data_path = main_config['data_path']
+        self.save_path = main_config['models_path']
         self.active_preproc_ordered = []
 
     @property
+    def available_pilots(self):
+        pilots = self.data_path.glob('*')
+        return [''] + [p.parts[-1] for p in pilots]
+
+    @property
+    def selected_pilot(self):
+        return self.select_pilot.value
+
+    @property
     def available_sessions(self):
-        sessions = self.data_path.glob('*')
+        pilot_path = self.data_path / self.selected_pilot
+        sessions = pilot_path.glob('*')
         return [s.name for s in sessions]
 
     @property
@@ -83,12 +94,17 @@ class TrainerWidget:
     def n_iters(self):
         return self.slider_n_iters.value
 
-    def on_model_change(self, attr, old, new):
-        logging.info(f'Select model {new}')
+    def on_pilot_change(self, attr, old, new):
+        logging.info(f'Select pilot {new}')
+        self.select_session.value = ['']
         self.update_widget()
 
     def on_session_change(self, attr, old, new):
         logging.info(f"Select train sessions {new}")
+        self.update_widget()
+
+    def on_model_change(self, attr, old, new):
+        logging.info(f'Select model {new}')
         self.update_widget()
 
     def on_preproc_change(self, attr, old, new):
@@ -105,6 +121,8 @@ class TrainerWidget:
         self.update_widget()
 
     def update_widget(self):
+        self.select_pilot.options = self.available_pilots
+        self.select_session.options = self.available_sessions
         self.button_train.button_type = 'primary'
         self.button_train.label = 'Train'
         self.div_info.text = f'<b>Preprocessing selected:</b> {self.selected_preproc} <br>'
@@ -123,7 +141,7 @@ class TrainerWidget:
             logging.info(f'Loading {id}')
 
             try:
-                session_path = self.data_path / \
+                session_path = self.data_path / self.selected_pilot /\
                     id / f'formatted_filt_500Hz'
                 filepath = session_path / 'train/train1.npz'
                 X[id], y[id], self.fs, self.ch_names = load_session(filepath,
@@ -207,9 +225,13 @@ class TrainerWidget:
         self.div_info.text += f'<b>Accuracy:</b> {cv_mean:.2f}+-{cv_std:.2f} <br>'
 
     def create_widget(self):
-        # Select - Choose session to use for training
+        # Select - Pilot
+        self.select_pilot = Select(title='Pilot:',
+                                   options=self.available_pilots)
+        self.select_pilot.on_change('value', self.on_pilot_change)
+
+        # Multichoice - Choose session to use for training
         self.select_session = MultiChoice(title='Select train ids',
-                                          options=self.available_sessions,
                                           width=250, height=120)
         self.select_session.on_change('value', self.on_session_change)
 
@@ -246,7 +268,8 @@ class TrainerWidget:
 
         self.div_info = Div()
 
-        column1 = column(self.select_session, self.select_model)
+        column1 = column(self.select_pilot, self.select_session,
+                         self.select_model)
         column2 = column(self.slider_roi_start, self.slider_roi_end,
                          self.checkbox_settings, self.slider_n_iters,
                          self.div_preproc, self.checkbox_preproc,

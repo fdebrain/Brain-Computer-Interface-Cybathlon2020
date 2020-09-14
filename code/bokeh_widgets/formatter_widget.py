@@ -1,6 +1,5 @@
 import logging
 from collections import Counter
-from pathlib import Path
 import traceback
 
 import numpy as np
@@ -11,23 +10,24 @@ from bokeh.models import (Div, Select, Button, Slider, CheckboxButtonGroup,
                           Span, Label, Toggle, ColumnDataSource)
 from bokeh.layouts import column, row
 
+from config import main_config
 from src.vhdr_formatter import format_session
 
 
 class FormatterWidget:
     def __init__(self):
-        self.data_path = Path('../Datasets/Pilots/Pilot_2')
-        self.labels = ['Rest', 'Left', 'Right', 'Headlight']
+        self.data_path = main_config['data_path']
+        self.labels = list(main_config['pred_decoding'].values())
         self.channel2idx = {}
         self._t = 0
         self._data = dict()
         self.source = ColumnDataSource(data=dict(timestamps=[], values=[]))
         self.source_events = ColumnDataSource(data=dict(events=[], actions=[]))
-        self.update_rate_ms = 100
+        self.play_rate_ms = 100
 
     @property
     def speed(self):
-        return self.slider_speed.value * self.update_rate_ms / 1000
+        return self.slider_speed.value * self.play_rate_ms / 1000
 
     @property
     def fs(self):
@@ -77,8 +77,18 @@ class FormatterWidget:
                                   actions=roi_events[:, 1])
 
     @property
+    def available_pilots(self):
+        pilots = self.data_path.glob('*')
+        return [''] + [p.parts[-1] for p in pilots]
+
+    @property
+    def selected_pilot(self):
+        return self.select_pilot.value
+
+    @property
     def available_sessions(self):
-        sessions = self.data_path.glob('*')
+        pilot_path = self.data_path / self.selected_pilot
+        sessions = pilot_path.glob('*')
         return [''] + [s.parts[-1] for s in sessions]
 
     @property
@@ -87,11 +97,12 @@ class FormatterWidget:
 
     @property
     def session_path(self):
-        return self.data_path / self.selected_session
+        return self.data_path / self.selected_pilot / self.selected_session
 
     @property
     def available_runs(self):
-        runs = self.session_path.glob('vhdr/*.vhdr')
+        folder = 'game' if self.is_game_session else 'vhdr'
+        runs = self.session_path.glob(f'{folder}/*.vhdr')
         return [''] + [r.name for r in runs]
 
     @property
@@ -146,7 +157,8 @@ class FormatterWidget:
     def is_game_session(self):
         return 'Game session' in self.selected_settings
 
-    def reset_widget(self):
+    def update_widget(self):
+        self.select_pilot.options = self.available_pilots
         self.select_session.options = self.available_sessions
         self.select_run.options = self.available_runs
         self.button_format.button_type = "primary"
@@ -158,13 +170,16 @@ class FormatterWidget:
         self.button_format.button_type = "primary"
         self.button_format.label = "Format"
 
+    def on_pilot_change(self, attr, old, new):
+        logging.info(f'Select pilot {new}')
+        self.update_widget()
+        self.select_session.value = ''
+
     def on_session_change(self, attr, old, new):
         logging.info(f'Select session {new}')
         logging.info('For sessions <=3: MI starts 4s after marker')
         logging.info('For sessions > 3: MI starts 7s after marker')
-
-        # Reset button state
-        self.reset_widget()
+        self.update_widget()
 
         # Get session info
         fs = None
@@ -203,6 +218,9 @@ class FormatterWidget:
 
     def on_run_change(self, attr, old, new):
         logging.info(f'Select visualizer run {new}')
+        self.update_widget()
+
+        # Load eeg file
         raw = mne.io.read_raw_brainvision(vhdr_fname=self.run_path,
                                           preload=True,
                                           verbose=False)
@@ -224,7 +242,7 @@ class FormatterWidget:
 
         logging.info(self._data['events'])
         self._t = 0
-        self.reset_widget()
+        # self.update_widget()
 
     def on_format_start(self):
         assert self.select_session.value != '', \
@@ -301,16 +319,20 @@ class FormatterWidget:
             logging.info('Play')
             self.play_toggle.button_type = 'warning'
             self.callback = curdoc().add_periodic_callback(self.callback_play,
-                                                           self.update_rate_ms)
+                                                           self.play_rate_ms)
         else:
             logging.info('Stop')
             self.play_toggle.button_type = 'primary'
             curdoc().remove_periodic_callback(self.callback)
 
     def create_widget(self):
+        # Select - Pilot
+        self.select_pilot = Select(title='Pilot:',
+                                   options=self.available_pilots)
+        self.select_pilot.on_change('value', self.on_pilot_change)
+
         # Select - Session to format/visualize
         self.select_session = Select(title='Session:')
-        self.select_session.options = self.available_sessions
         self.select_session.on_change('value', self.on_session_change)
 
         # Select - Label encoding mappings
@@ -348,7 +370,7 @@ class FormatterWidget:
 
         # Slider - Navigate through signal
         self.slider_t = Slider(title="Navigate", start=0,
-                                     end=1000, value=0)
+                               end=1000, value=0)
         self.slider_t.on_change('value', self.on_t_change)
 
         # Slider - Window length
@@ -382,7 +404,8 @@ class FormatterWidget:
                                            self.event_label])
 
         # Create tab with layout
-        column1 = column([self.select_session,
+        column1 = column([self.select_pilot,
+                          self.select_session,
                           row(self.select_labels),
                           self.slider_pre_event, self.slider_post_event,
                           self.checkbox_settings,
