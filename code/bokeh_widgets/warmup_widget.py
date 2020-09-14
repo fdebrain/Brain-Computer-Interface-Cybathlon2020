@@ -1,6 +1,6 @@
+import os
 import logging
 import time
-from pathlib import Path
 import traceback
 import copy
 
@@ -11,6 +11,7 @@ from bokeh.models import ColumnDataSource
 from bokeh.models import Div, Select, CheckboxButtonGroup, Toggle
 from pyqtgraph.Qt import QtCore
 
+from config import main_config, warmup_config
 from src.lsl_client import LSLClient
 from src.lsl_recorder import LSLRecorder
 from src.action_predictor import ActionPredictor
@@ -19,17 +20,16 @@ from src.action_predictor import ActionPredictor
 class WarmUpWidget:
     def __init__(self, parent=None):
         self.parent = parent
-        self.fs = 500
-        self.n_channels = 63
+        self.fs = main_config['fs']
+        self.n_channels = main_config['n_channels']
         self.t0 = 0
         self.last_ts = 0
 
         # Chronogram
         self.chrono_source = ColumnDataSource(dict(ts=[], y_pred=[]))
-        self.pred2encoding = {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'}
+        self.pred_decoding = main_config['pred_decoding']
 
         # LSL stream reader
-        self.lsl_every_s = 0.1
         self.lsl_reader = None
         self.lsl_start_time = None
         self.thread_lsl = QtCore.QThreadPool()
@@ -37,25 +37,23 @@ class WarmUpWidget:
         self._lsl_data = (None, None)
 
         # LSL stream recorder
-        self.h5_name = 'warmup_recording'
+        if not os.path.isdir(main_config['record_path']):
+            os.mkdir(main_config['record_path'])
+        self.record_path = main_config['record_path']
+        self.record_name = warmup_config['record_name']
         self.lsl_recorder = None
-        self.thread_record = QtCore.QThreadPool()
+        # self.thread_record = QtCore.QThreadPool()
 
-        # Model
-        self.models_path = Path('./saved_models')
+        # Predictor
+        self.models_path = main_config['models_path']
         self.input_signal = np.zeros((self.n_channels, 4 * self.fs))
-        self.n_crops = 10
-        self.crop_len = 0.5
         self.predictor = None
         self.thread_pred = QtCore.QThreadPool()
         self._current_pred = (0, 'Rest')
 
         # Feedback images
-        self.static_folder = Path('code/static')
-        self.action2image = {'Left': 'arrow-left-solid.png',
-                             'Right': 'arrow-right-solid.png',
-                             'Rest': 'retweet-solid.png',
-                             'Headlight': 'bolt-solid.png'}
+        self.static_folder = warmup_config['static_folder']
+        self.action2image = warmup_config['action2image']
 
     @property
     def current_pred(self):
@@ -63,7 +61,7 @@ class WarmUpWidget:
 
     @current_pred.setter
     def current_pred(self, action_idx):
-        self._current_pred = (action_idx, self.pred2encoding[action_idx])
+        self._current_pred = (action_idx, self.pred_decoding[action_idx])
         self.parent.add_next_tick_callback(self.update_prediction)
 
     @property
@@ -93,23 +91,6 @@ class WarmUpWidget:
     @property
     def model_name(self):
         return self.select_model.value
-
-    @property
-    def selected_preproc(self):
-        active = self.checkbox_preproc.active
-        return [self.checkbox_preproc.labels[i] for i in active]
-
-    @property
-    def should_reref(self):
-        return 'Rereference' in self.selected_preproc
-
-    @property
-    def should_filter(self):
-        return 'Filter' in self.selected_preproc
-
-    @property
-    def should_standardize(self):
-        return 'Standardize' in self.selected_preproc
 
     @property
     def is_convnet(self):
@@ -154,17 +135,18 @@ class WarmUpWidget:
                 return
 
         try:
-            self.predictor = ActionPredictor(self, self.modelfile, self.fs,
-                                             predict_every_s=1)
+            self.predictor = ActionPredictor(self,
+                                             self.modelfile,
+                                             self.is_convnet)
             self.thread_pred.start(self.predictor)
             self.model_info.text = f'<b>Model:</b> {new}'
-        except Exception:
-            logging.error(f'Failed loading model {self.modelfile}')
+        except Exception as e:
+            logging.error(f'Failed loading model {self.modelfile} - {e}')
             self.reset_predictor()
 
     def on_channel_change(self, attr, old, new):
         logging.info(f'Select new channel {new}')
-        self.channel_source.data['eeg'] = []
+        self.channel_source.data = dict(ts=[], eeg=[])
         self.plot_stream.yaxis.axis_label = f'Amplitude ({new})'
 
     def reset_plots(self):
@@ -182,7 +164,7 @@ class WarmUpWidget:
         # Update information display (might cause delay)
         self.pred_info.text = f'<b>Prediction:</b> {self.current_pred}'
         src = self.static_folder / \
-            self.action2image[self.pred2encoding[action_idx]]
+            self.action2image[self.pred_decoding[action_idx]]
         self.image.text = f"<img src={src} width='200' height='200' text-align='center'>"
 
         # Save prediction as event
@@ -205,7 +187,7 @@ class WarmUpWidget:
 
     def start_lsl_thread(self):
         try:
-            self.lsl_reader = LSLClient(self, fetch_every_s=self.lsl_every_s)
+            self.lsl_reader = LSLClient(self)
             self.fs = self.lsl_reader.fs
 
             if self.lsl_reader is not None:
@@ -223,11 +205,11 @@ class WarmUpWidget:
     def on_lsl_record_toggle(self, active):
         if active:
             try:
-                self.lsl_recorder = LSLRecorder(self.h5_name,
-                                                self.n_channels,
-                                                self.fs)
-                self.thread_record.start(self.lsl_recorder)
-            except Exception:
+                self.lsl_recorder = LSLRecorder(self.record_path,
+                                                self.record_name)
+                self.lsl_recorder.open_h5()
+            except Exception as e:
+                logging.info(f'Failed creating LSLRecorder - {e}')
                 self.reset_recorder()
                 self.button_record.label = 'Recording failed'
                 self.button_record.button_type = 'danger'
@@ -286,13 +268,6 @@ class WarmUpWidget:
         self.checkbox_settings = CheckboxButtonGroup(labels=['Show signal'])
         self.checkbox_settings.on_change('active', self.on_settings_change)
 
-        # Checkbox - Choose preprocessing steps
-        self.div_preproc = Div(text='<b>Preprocessing</b>', align='center')
-        self.checkbox_preproc = CheckboxButtonGroup(labels=['Filter',
-                                                            'Standardize',
-                                                            'Rereference'],
-                                                    active=[1, 2])
-
         # Select - Channel to visualize
         self.select_channel = Select(title='Select channel', value='1 - Fp1')
         self.select_channel.on_change('value', self.on_channel_change)
@@ -316,8 +291,8 @@ class WarmUpWidget:
                                    source=self.chrono_source,
                                    legend_label='Prediction')
         self.plot_chronogram.legend.background_fill_alpha = 0.6
-        self.plot_chronogram.yaxis.ticker = list(self.pred2encoding.keys())
-        self.plot_chronogram.yaxis.major_label_overrides = self.pred2encoding
+        self.plot_chronogram.yaxis.ticker = list(self.pred_decoding.keys())
+        self.plot_chronogram.yaxis.major_label_overrides = self.pred_decoding
 
         # Div - Display useful information
         self.model_info = Div(text=f'<b>Model:</b> None')
@@ -329,8 +304,7 @@ class WarmUpWidget:
                          self.button_record,
                          self.select_model,
                          self.select_channel,
-                         self.div_settings, self.checkbox_settings,
-                         self.div_preproc, self.checkbox_preproc)
+                         self.div_settings, self.checkbox_settings)
         column2 = column(self.plot_stream, self.plot_chronogram)
         column3 = column(self.model_info, self.pred_info, self.image)
         return row(column1, column2, column3)
