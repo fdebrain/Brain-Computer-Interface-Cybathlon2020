@@ -51,12 +51,17 @@ class TrainerWidget:
         config_cn = dict(sigma=6)
         config_bpf = dict(fs=self.fs, f_order=2, f_type='butter',
                           f_low=4, f_high=38)
-        config_crop = dict(fs=self.fs, n_crops=8, crop_len=0.5)
+        config_crop = dict(fs=self.fs, n_crops=10, crop_len=0.5)
         return {'CN': config_cn, 'BPF': config_bpf, 'Crop': config_crop}
 
     @property
     def should_crop(self):
         return 'Crop' in self.selected_preproc
+
+    @property
+    def selected_folders(self):
+        active = self.checkbox_folder.active
+        return [self.checkbox_folder.labels[i] for i in active]
 
     @property
     def selected_settings(self):
@@ -81,6 +86,15 @@ class TrainerWidget:
     def train_mode(self):
         return 'optimize' if 'Optimize' in self.selected_settings \
             else 'validate'
+
+    @property
+    def folder_ids(self):
+        ids = []
+        if 'New Calib' in self.selected_folders:
+            ids.append('formatted_filt_500Hz')
+        if 'Game' in self.selected_folders:
+            ids.append('formatted_filt_500Hz_game')
+        return ids
 
     @property
     def start(self):
@@ -138,20 +152,25 @@ class TrainerWidget:
     def on_load(self):
         X, y = {}, {}
         for id in self.train_ids:
-            logging.info(f'Loading {id}')
+            for folder in self.folder_ids:
+                logging.info(f'Loading {id} - {folder}')
+                try:
+                    session_path = self.data_path / self.selected_pilot /\
+                        id / folder
+                    filepath = session_path / 'train/train1.npz'
+                    X_id, y_id, fs, ch_names = load_session(filepath,
+                                                            self.start,
+                                                            self.end)
+                    X[f'{id}_{folder}'] = X_id
+                    y[f'{id}_{folder}'] = y_id
+                    self.fs = fs
+                    self.ch_names = ch_names
 
-            try:
-                session_path = self.data_path / self.selected_pilot /\
-                    id / f'formatted_filt_500Hz'
-                filepath = session_path / 'train/train1.npz'
-                X[id], y[id], self.fs, self.ch_names = load_session(filepath,
-                                                                    self.start,
-                                                                    self.end)
-            except Exception:
-                logging.info(f'Loading data failed - {traceback.format_exc()}')
-                self.button_train.button_type = 'danger'
-                self.button_train.label = 'Training failed'
-                return
+                except Exception as e:
+                    logging.info(f'Loading data failed - {e}')
+                    self.button_train.button_type = 'danger'
+                    self.button_train.label = 'Training failed'
+                    return
 
         # Concatenate all data
         self.X = np.vstack([X[id] for id in X.keys()])
@@ -230,6 +249,10 @@ class TrainerWidget:
                                    options=self.available_pilots)
         self.select_pilot.on_change('value', self.on_pilot_change)
 
+        # Multichoice - Choose training folder
+        self.checkbox_folder = CheckboxButtonGroup(labels=['New Calib',
+                                                           'Game'])
+
         # Multichoice - Choose session to use for training
         self.select_session = MultiChoice(title='Select train ids',
                                           width=250, height=120)
@@ -268,8 +291,8 @@ class TrainerWidget:
 
         self.div_info = Div()
 
-        column1 = column(self.select_pilot, self.select_session,
-                         self.select_model)
+        column1 = column(self.select_pilot, self.checkbox_folder,
+                         self.select_session, self.select_model)
         column2 = column(self.slider_roi_start, self.slider_roi_end,
                          self.checkbox_settings, self.slider_n_iters,
                          self.div_preproc, self.checkbox_preproc,
