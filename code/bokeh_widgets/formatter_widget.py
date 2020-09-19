@@ -112,7 +112,8 @@ class FormatterWidget:
 
     @property
     def run_path(self):
-        return self.session_path / 'vhdr' / self.select_run.value
+        folder = 'game' if self.is_game_session else 'vhdr'
+        return self.session_path / folder / self.select_run.value
 
     @property
     def channel_name(self):
@@ -177,8 +178,6 @@ class FormatterWidget:
 
     def on_session_change(self, attr, old, new):
         logging.info(f'Select session {new}')
-        logging.info('For sessions <=3: MI starts 4s after marker')
-        logging.info('For sessions > 3: MI starts 7s after marker')
         self.update_widget()
 
         # Get session info
@@ -218,6 +217,7 @@ class FormatterWidget:
 
     def on_run_change(self, attr, old, new):
         logging.info(f'Select visualizer run {new}')
+        self.select_channel.value = ''
         self.update_widget()
 
         # Load eeg file
@@ -240,9 +240,15 @@ class FormatterWidget:
         self._data['events'] = [(ts/self.fs, action)
                                 for ts, action in events[:, [0, 2]]]
 
-        logging.info(self._data['events'])
         self._t = 0
-        # self.update_widget()
+
+    def on_settings_change(self, attr, old, new):
+        logging.info(f'Changed settings: {new}')
+        if 2 in new:
+            self.update_widget()
+            self.on_session_change('attr',
+                                   self.selected_session,
+                                   self.selected_session)
 
     def on_format_start(self):
         assert self.select_session.value != '', \
@@ -258,14 +264,14 @@ class FormatterWidget:
         preprocess_settings = dict(resample=self.should_resample,
                                    preprocess=self.should_preprocess,
                                    remove_ch=remove_ch)
-        save_path = f'{self.session_path}'
 
         try:
             format_session(self.session_runs,
-                           save_path,
+                           self.session_path,
                            extraction_settings,
                            preprocess_settings,
-                           self.labels_encoding)
+                           self.labels_encoding,
+                           self.is_game_session)
         except Exception:
             logging.info(f'Failed to format - {traceback.format_exc()}')
             self.button_format.button_type = "danger"
@@ -325,10 +331,14 @@ class FormatterWidget:
             self.play_toggle.button_type = 'primary'
             curdoc().remove_periodic_callback(self.callback)
 
+    def reset_plot(self):
+        self.source.data = dict(timestamps=[], values=[])
+        self.source_events.data = dict(events=[], actions=[])
+
     def create_widget(self):
         # Select - Pilot
         self.select_pilot = Select(title='Pilot:',
-                                   options=self.available_pilots)
+                                   options=self.available_pilots, )
         self.select_pilot.on_change('value', self.on_pilot_change)
 
         # Select - Session to format/visualize
@@ -353,6 +363,7 @@ class FormatterWidget:
         # Checkbox - Preprocessing
         self.checkbox_settings = CheckboxButtonGroup(
             labels=['Resample to 250Hz', 'Preprocess', 'Game session'])
+        self.checkbox_settings.on_change('active', self.on_settings_change)
 
         self.button_format = Button(label="Format", button_type="primary")
         self.button_format.on_click(self.on_format_start)
