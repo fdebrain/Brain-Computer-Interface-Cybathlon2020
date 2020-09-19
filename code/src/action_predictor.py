@@ -8,7 +8,7 @@ from pyqtgraph.Qt import QtCore
 from config import main_config, predictor_config, game_config
 from src.pipeline import load_pipeline
 from src.models import predict
-from src.game_player import GamePlayer, CommandSenderPort
+from src.game_player import GamePlayer
 
 
 class ActionPredictor(QtCore.QRunnable):
@@ -43,7 +43,7 @@ class ActionPredictor(QtCore.QRunnable):
         # Game logs (separate thread - if autoplay)
         self.game_logs_path = game_config['game_logs_path']
         self.game_log_reader = None
-        self.thread_log = QtCore.QThreadPool()
+        # self.thread_log = QtCore.QThreadPool()
 
         # Game player
         self.player_idx = game_config['player_idx']
@@ -84,13 +84,13 @@ class ActionPredictor(QtCore.QRunnable):
 
     def notify(self):
         # AUTOPLAY - Fake delay for more realistic control feel
-        if self.model == 'AUTOPLAY':
+        if self.model == 'AUTOPLAY' and self.action_idx in self.pred_decoding.keys():
             random_delay = (self.fake_delay_max - self.fake_delay_min) * \
                 np.random.random_sample() + self.fake_delay_min
             time.sleep(random_delay)
 
-        self.parent.pred_action = (self.action_idx,
-                                   self.pred_decoding[self.action_idx])
+        self.parent.pred_action = (copy.deepcopy(self.action_idx),
+                                   copy.deepcopy(self.pred_decoding[self.action_idx]))
 
     @QtCore.pyqtSlot()
     def run(self):
@@ -102,4 +102,5 @@ class ActionPredictor(QtCore.QRunnable):
             delay_correction = time.time() - countdown
             time.sleep(self.predict_every_s - delay_correction)
             self.notify()
+
         logging.info('Stop action predictor')
