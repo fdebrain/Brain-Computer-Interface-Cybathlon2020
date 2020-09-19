@@ -42,18 +42,21 @@ class TestWidget:
 
     @property
     def available_sessions(self):
-        pilot_path = self.data_path / self.selected_pilot
-        sessions = pilot_path.glob('*')
-        return [''] + [s.name for s in sessions]
+        if self.select_pilot != '':
+            pilot_path = self.data_path / self.selected_pilot
+            sessions = pilot_path.glob('*')
+            return [''] + [s.name for s in sessions]
 
     @property
     def session_path(self):
-        return self.data_path / self.selected_pilot / self.select_session.value
+        if self.selected_pilot != '':
+            return self.data_path / self.selected_pilot / self.select_session.value
 
     @property
     def available_runs(self):
-        runs = self.session_path.glob('game/*.vhdr')
-        return [''] + [r.name for r in runs]
+        if self.select_session.value != '':
+            runs = self.session_path.glob('game/*.vhdr')
+            return [''] + [r.name for r in runs]
 
     @property
     def run_path(self):
@@ -107,16 +110,19 @@ class TestWidget:
 
     def on_pilot_change(self, attr, old, new):
         logging.info(f'Select pilot {new}')
-        self.update_widget()
         self.select_session.value = ''
         self.select_run.value = ''
+        self.update_widget()
 
     def on_session_change(self, attr, old, new):
         logging.info(f'Select session {new}')
-        self.update_widget()
         self.select_run.value = ''
+        self.update_widget()
 
     def on_run_change(self, attr, old, new):
+        if new == '':
+            return
+
         logging.info(f'Select run {new}')
         self.update_widget()
 
