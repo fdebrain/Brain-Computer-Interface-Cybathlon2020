@@ -106,30 +106,8 @@ class PlayerWidget:
     @expected_action.setter
     def expected_action(self, action):
         logging.info(f'Receiving groundtruth from logs: {action}')
-        action_idx, action_name = action
-        self._expected_action = action
-
-        # Start autoplay predictor when game starts + reset chronogram (if multiple consecutive runs)
-        if action_name == 'Game start':
-            self.game_start_time = time.time()
-            self.parent.add_next_tick_callback(self.reset_chronogram)
-            if self.modelfile == 'AUTOPLAY':
-                self.parent.add_next_tick_callback(self.start_predictor_thread)
-        elif action_name in ['Game end', 'Pause', 'Resume']:
-            self.reset_predictor()
-
-        # Save groundtruth as event
-        if self.lsl_recorder is not None:
-            self.lsl_recorder.save_event(copy.deepcopy(self.last_ts),
-                                         copy.deepcopy(action_idx))
-
-        # Send groundtruth to microcontroller
-        if self.sending_events:
-            if self.port_sender is not None:
-                self.port_sender.sendCommand(action_idx)
-                logging.info(f'Send event: {action}')
-            else:
-                logging.info('Please select a port !')
+        self._expected_action = copy.deepcopy(action)
+        self.parent.add_next_tick_callback(self.update_groundtruth)
 
     @property
     def available_logs(self):
@@ -217,6 +195,9 @@ class PlayerWidget:
     def reset_plots(self):
         self.chrono_source.data = dict(ts=[], y_pred=[], y_true=[])
         self.channel_source.data = dict(ts=[], eeg=[])
+        self.gd_info.text = ''
+        self.pred_info.text = ''
+        self.acc_info.text = ''
 
     def reset_game(self):
         self.game.kill()
@@ -225,16 +206,7 @@ class PlayerWidget:
     def reset_log_reader(self):
         logging.info('Delete old log reader')
         self.thread_log.clear()
-        del self.game_log_reader
-
-    def reset_chronogram(self):
-        logging.info('Reset chronogram')
-        self.chrono_source.data = dict(ts=[],
-                                       y_true=[],
-                                       y_pred=[])
-        self.gd_info.text = ''
-        self.pred_info.text = ''
-        self.acc_info.text = ''
+        self.game_log_reader = None
 
     def on_model_change(self, attr, old, new):
         logging.info(f'Select new pre-trained model {new}')
@@ -247,7 +219,7 @@ class PlayerWidget:
 
         if self.port_sender is not None:
             logging.info('Delete old log reader')
-            del self.port_sender
+            self.port_sender = None
 
         logging.info(f'Instanciate port sender {new}')
         self.port_sender = CommandSenderPort(new)
@@ -263,6 +235,7 @@ class PlayerWidget:
     def start_game_process(self):
         logging.info('Lauching Cybathlon game')
         self.n_old_logs = len(self.available_logs)
+        self.reset_plots()
 
         # Close any previous game process
         if self.game is not None:
@@ -303,6 +276,38 @@ class PlayerWidget:
         self.button_launch_game.label = 'Launched'
         self.button_launch_game.button_type = 'success'
 
+    def update_groundtruth(self):
+        action_idx, action_name = self._expected_action
+
+        # Start autoplay predictor when game starts + reset chronogram (if multiple consecutive runs)
+        if action_name == 'Game start':
+            self.reset_plots()
+            self.game_start_time = time.time()
+            if self.modelfile == 'AUTOPLAY':
+                self.parent.add_next_tick_callback(self.start_predictor_thread)
+        elif action_name in ['Game end', 'Pause']:
+            self.reset_predictor()
+        elif action_name == 'Resume':
+            self.parent.add_next_tick_callback(self.start_predictor_thread)
+        elif action_name == 'Reset game':
+            self.reset_plots()
+            self.reset_predictor()
+            self.reset_log_reader()
+            self.parent.add_next_tick_callback(self.start_log_reader)
+
+        # Save groundtruth as event TODO: Wrong thread
+        if self.lsl_recorder is not None:
+            self.lsl_recorder.save_event(copy.deepcopy(self.last_ts),
+                                         copy.deepcopy(action_idx))
+
+        # Send groundtruth to microcontroller
+        if self.sending_events:
+            if self.port_sender is not None:
+                self.port_sender.sendCommand(action_idx)
+                logging.info(f'Send event: {action_idx}')
+            else:
+                logging.info('Please select a port !')
+
     def update_prediction(self):
         if not self.game_is_on:
             logging.info('Game window was closed')
@@ -322,9 +327,9 @@ class PlayerWidget:
                                        y_pred=[action_idx]))
 
         # Update information display
-        self.gd_info = f'<b>Groundtruth:</b> {self.expected_action}'
-        self.pred_info = f'<b>Prediction:</b> {self.pred_action}'
-        self.acc_info = f'<b>Accuracy:</b> {self.accuracy:.2f}'
+        self.gd_info.text = f'<b>Groundtruth:</b> {self.expected_action}'
+        self.pred_info.text = f'<b>Prediction:</b> {self.pred_action}'
+        self.acc_info.text = f'<b>Accuracy:</b> {self.accuracy:.2f}'
 
     def on_lsl_connect_toggle(self, active):
         if active:
@@ -353,9 +358,7 @@ class PlayerWidget:
             self.reset_lsl()
 
     def start_predictor_thread(self):
-        # Delete existing predictor thread
-        if self.predictor is not None:
-            self.reset_predictor()
+        self.reset_predictor()
 
         try:
             self.predictor = ActionPredictor(self,
