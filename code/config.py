@@ -24,6 +24,10 @@ warmup_config = {
                      'Rest': 'retweet-solid.png',
                      'Headlight': 'bolt-solid.png'},
     'record_name': 'warmup_recording.h5',
+    'apply_notch': False,
+    'apply_filt': True,
+    'f_min': 2,
+    'f_max': 40,
 }
 
 game_config = {

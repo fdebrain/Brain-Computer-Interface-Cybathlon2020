@@ -10,6 +10,7 @@ from bokeh.layouts import row, column
 from bokeh.models import ColumnDataSource
 from bokeh.models import Div, Select, CheckboxButtonGroup, Toggle
 from pyqtgraph.Qt import QtCore
+import mne
 
 from config import main_config, warmup_config
 from src.lsl_client import LSLClient
@@ -32,9 +33,10 @@ class WarmUpWidget:
         # LSL stream reader
         self.lsl_reader = None
         self.lsl_start_time = None
+        self._lsl_data = (None, None)
         self.thread_lsl = QtCore.QThreadPool()
         self.channel_source = ColumnDataSource(dict(ts=[], eeg=[]))
-        self._lsl_data = (None, None)
+        self.buffer_size_s = 10
 
         # LSL stream recorder
         if not os.path.isdir(main_config['record_path']):
@@ -42,7 +44,6 @@ class WarmUpWidget:
         self.record_path = main_config['record_path']
         self.record_name = warmup_config['record_name']
         self.lsl_recorder = None
-        # self.thread_record = QtCore.QThreadPool()
 
         # Predictor
         self.models_path = main_config['models_path']
@@ -54,6 +55,12 @@ class WarmUpWidget:
         # Feedback images
         self.static_folder = warmup_config['static_folder']
         self.action2image = warmup_config['action2image']
+
+        # Signal preprocessing
+        self.apply_notch = warmup_config['apply_notch']
+        self.apply_filt = warmup_config['apply_filt']
+        self.f_min = warmup_config['f_min']
+        self.f_max = warmup_config['f_max']
 
     @property
     def current_pred(self):
@@ -221,6 +228,20 @@ class WarmUpWidget:
             self.button_record.label = 'Start recording'
             self.button_record.button_type = 'primary'
 
+    def preproc_signal(self, eeg):
+        info = mne.create_info(self.lsl_reader.ch_names,
+                               self.fs,
+                               ch_types='eeg')
+        data = mne.io.RawArray(eeg, info, verbose=0)
+
+        if self.apply_notch:
+            data.notch_filter(freqs=[50], filter_length=40)
+        if self.apply_filt:
+            # data.savgol_filter(h_freq=30, verbose=0)
+            data.filter(l_freq=self.f_min, h_freq=self.f_max)
+
+        return data
+
     def update_signal(self):
         ts, eeg = self.lsl_data
         self.last_ts = ts[-1]
@@ -234,10 +255,14 @@ class WarmUpWidget:
             self.lsl_start_time = time.time()
             self.t0 = ts[0]
 
-        # Update source display
+        # Filter channel signal for visualization purpose
         ch = self.channel_idx
-        self.channel_source.stream(dict(ts=ts-self.t0, eeg=eeg[ch, :]),
-                                   rollover=int(2 * self.fs))
+        data = self.preproc_signal(eeg)
+        channel_eeg, _ = data[ch, :]
+
+        # Update source display
+        self.channel_source.stream(dict(ts=ts-self.t0, eeg=channel_eeg.flatten()),
+                                   rollover=int(self.buffer_size_s * self.fs))
 
         # Update signal
         chunk_size = eeg.shape[-1]
