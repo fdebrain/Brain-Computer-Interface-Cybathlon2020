@@ -126,8 +126,10 @@ class TestWidget:
         logging.info(f'Select run {new}')
         self.update_widget()
 
-        raw = load_vhdr(self.run_path, resample=False,
-                        preprocess=True, remove_ch=['Fp1', 'Fp2'])
+        raw = load_vhdr(self.run_path,
+                        resample=False,
+                        preprocess=test_config['prefilt'],
+                        remove_ch=['Fp1', 'Fp2'])
         self.fs = raw.info['sfreq']
 
         # Get channels

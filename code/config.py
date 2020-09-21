@@ -12,6 +12,7 @@ main_config = {
 }
 
 test_config = {
+    'prefilt': False,
     'n_crops': 10,
     'crop_len': 0.5,
     'markers_decoding': {2: 'Rest', 4: 'Left', 6: 'Right', 8: 'Headlight'}
