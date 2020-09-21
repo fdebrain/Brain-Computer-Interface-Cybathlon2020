@@ -81,13 +81,14 @@ def predict(X, models, is_convnet, n_crops=10, crop_len=0.5, fs=500, should_rere
     if not isinstance(models, list):
         models = [models]
 
-    # Preprocess
-    X = preprocessing(X, fs, should_reref, should_filter, should_standardize)
-
     # Cropping
     X, _ = cropping(X, [None], fs, n_crops, crop_len)
 
     if is_convnet:
+        # Preprocess
+        X = preprocessing(X, fs, should_reref,
+                          should_filter, should_standardize)
+
         # ConvNet case - Adapt input shape & convert probabilities to int
         y_prob = [model.predict(X[:, :, :, np.newaxis])
                   for model in models]
