@@ -66,7 +66,7 @@ def extract_events(raw, pre, post, marker_decodings, is_game=False):
     if len(to_delete) > 0:
         events = np.delete(events, to_delete, axis=0)
     logging.info(f'Removed {len(to_delete)} false events')
-    logging.info([(e[0]/fs, e[-1]) for e in events])
+    logging.info([(e[0], e[-1]) for e in events])
 
     logging.info(f'Extracting window around markers: {-pre}s to {post}s')
     epochs = mne.Epochs(raw, events, marker_decodings, -pre, post,
