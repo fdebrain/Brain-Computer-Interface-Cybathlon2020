@@ -2,13 +2,17 @@ import numpy as np
 import scipy.signal
 from sklearn.base import BaseEstimator, TransformerMixin
 
+from config import train_config
+
 
 def preprocessing(signal, fs, rereference=False, filt=False, standardize=False):
     if rereference:
         signal = rereferencing(signal)
     if filt:
-        signal = filtering(signal, fs, f_order=2,
-                           f_low=4, f_high=38)
+        signal = filtering(signal, fs,
+                           f_order=train_config['f_order'],
+                           f_low=train_config['f_low'],
+                           f_high=train_config['f_high'])
     if standardize:
         signal = clipping(signal, sigma=6)
         signal = standardizing(signal)

@@ -11,6 +11,14 @@ main_config = {
     'micro_path': Path('/dev/ttyACM*'),
 }
 
+train_config = {
+    'n_crops': 10,
+    'crop_len': 0.5,
+    'f_order': 4,
+    'f_low': 4,
+    'f_high': 40
+}
+
 test_config = {
     'prefilt': False,
     'n_crops': 10,

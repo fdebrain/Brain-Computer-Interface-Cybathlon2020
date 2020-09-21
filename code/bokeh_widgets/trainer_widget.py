@@ -13,7 +13,7 @@ from src.preprocessing import cropping
 from src.pipeline import get_pipeline, save_json, save_pipeline
 from src.trainer import train
 
-from config import main_config
+from config import main_config, train_config
 
 
 class TrainerWidget:
@@ -49,9 +49,14 @@ class TrainerWidget:
     @property
     def preproc_config(self):
         config_cn = dict(sigma=6)
-        config_bpf = dict(fs=self.fs, f_order=2, f_type='butter',
-                          f_low=4, f_high=38)
-        config_crop = dict(fs=self.fs, n_crops=10, crop_len=0.5)
+        config_bpf = dict(fs=self.fs,
+                          f_order=train_config['f_order'],
+                          f_type='butter',
+                          f_low=train_config['f_low'],
+                          f_high=train_config['f_high'])
+        config_crop = dict(fs=self.fs,
+                           n_crops=train_config['n_crops'],
+                           crop_len=train_config['crop_len'])
         return {'CN': config_cn, 'BPF': config_bpf, 'Crop': config_crop}
 
     @property
@@ -91,9 +96,9 @@ class TrainerWidget:
     def folder_ids(self):
         ids = []
         if 'New Calib' in self.selected_folders:
-            ids.append('formatted_filt_500Hz')
+            ids.append('formatted_raw_500Hz')
         if 'Game' in self.selected_folders:
-            ids.append('formatted_filt_500Hz_game')
+            ids.append('formatted_raw_500Hz_game')
         return ids
 
     @property
