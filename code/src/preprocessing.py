@@ -144,10 +144,10 @@ def filtering(X, fs=250, f_order=5, f_type='butter', f_low=4, f_high=38):
         raise ValueError(
             "Please chose f_type among {'butter', 'cheby', 'ellip'}.")
 
-    if f_low == 0:
+    if f_low is None:
         filt_params['Wn'] = [f_high]
         sos = filt(**filt_params, btype='lowpass')
-    elif f_high == 0:
+    elif f_high is None:
         filt_params['Wn'] = [f_low]
         sos = filt(**filt_params, btype='highpass')
     else:
