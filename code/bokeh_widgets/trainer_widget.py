@@ -181,7 +181,7 @@ class TrainerWidget:
         self.X = np.vstack([X[id] for id in X.keys()])
         self.y = np.hstack([y[id] for id in y.keys()]).flatten()
 
-        # Cropping
+        # Cropping FIXME: Integrate inside preproc to avoid data leakage
         if self.should_crop:
             self.X, self.y = cropping(self.X, self.y,
                                       **self.preproc_config['Crop'])
@@ -212,7 +212,7 @@ class TrainerWidget:
                                                                search_space,
                                                                self.train_mode,
                                                                self.n_iters,
-                                                               n_jobs=-1,
+                                                               n_jobs=train_config['n_jobs'],
                                                                is_convnet=self.is_convnet)
         except Exception:
             logging.info(f'Training failed - {traceback.format_exc()}')

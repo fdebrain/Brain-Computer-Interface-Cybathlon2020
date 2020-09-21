@@ -16,7 +16,8 @@ train_config = {
     'crop_len': 0.5,
     'f_order': 4,
     'f_low': 4,
-    'f_high': 40
+    'f_high': 40,
+    'n_jobs': 4         # -1 to use all available cpus, if out of RAM reduce the value
 }
 
 test_config = {
