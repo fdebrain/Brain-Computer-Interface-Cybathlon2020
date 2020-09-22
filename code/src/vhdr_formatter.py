@@ -77,7 +77,7 @@ def extract_events(raw, pre, post, marker_decodings, is_game=False):
     return eeg, labels
 
 
-def format_session(list_paths, save_path, extraction_settings, preprocess_settings, marker_encodings, is_game):
+def format_session(list_paths, save_path, extraction_settings, preprocess_settings, marker_encodings, is_game, balance=False):
     session_eeg, session_labels = [], []
     assert len(list_paths) > 0, 'No subsession to format'
     logging.info(f'Decoding: {extraction_settings["marker_decodings"]}')
@@ -93,6 +93,18 @@ def format_session(list_paths, save_path, extraction_settings, preprocess_settin
         else:
             session_eeg = np.vstack([session_eeg, eeg])
             session_labels = np.concatenate([session_labels, labels])
+
+    # Balance rest sessions
+    if balance:
+        count_dict = dict(Counter(session_labels))
+        rest_marker = extraction_settings['marker_decodings']['Rest']
+        n_delete = count_dict[rest_marker] - min(count_dict.values())
+
+        # Randomly pick rest ids to delete
+        rest_ids = np.where(session_labels == rest_marker)[0]
+        ids_to_remove = np.random.choice(rest_ids, n_delete, replace=False)
+        session_eeg = np.delete(session_eeg, ids_to_remove, axis=0)
+        session_labels = np.delete(session_labels, ids_to_remove, axis=0)
 
     # Remap labels
     session_labels = np.array([marker_encodings[l] for l in session_labels])

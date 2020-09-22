@@ -147,8 +147,8 @@ class FormatterWidget:
         return [self.checkbox_settings.labels[i] for i in active]
 
     @property
-    def should_resample(self):
-        return 'Resample to 250Hz' in self.selected_settings
+    def should_balance(self):
+        return 'Balance' in self.selected_settings
 
     @property
     def should_preprocess(self):
@@ -261,7 +261,7 @@ class FormatterWidget:
         remove_ch = ['Fp1', 'Fp2']
         extraction_settings = dict(pre=self.pre, post=self.post,
                                    marker_decodings=self.labels_decoding)
-        preprocess_settings = dict(resample=self.should_resample,
+        preprocess_settings = dict(resample=False,
                                    preprocess=self.should_preprocess,
                                    remove_ch=remove_ch)
 
@@ -271,7 +271,8 @@ class FormatterWidget:
                            extraction_settings,
                            preprocess_settings,
                            self.labels_encoding,
-                           self.is_game_session)
+                           self.is_game_session,
+                           self.should_balance)
         except Exception:
             logging.info(f'Failed to format - {traceback.format_exc()}')
             self.button_format.button_type = "danger"
@@ -362,7 +363,7 @@ class FormatterWidget:
 
         # Checkbox - Preprocessing
         self.checkbox_settings = CheckboxButtonGroup(
-            labels=['Resample to 250Hz', 'Preprocess', 'Game session'])
+            labels=['Balance', 'Preprocess', 'Game session'])
         self.checkbox_settings.on_change('active', self.on_settings_change)
 
         self.button_format = Button(label="Format", button_type="primary")
