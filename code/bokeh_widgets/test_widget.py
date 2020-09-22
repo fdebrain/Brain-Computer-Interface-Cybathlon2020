@@ -3,7 +3,7 @@ from collections import Counter
 
 import numpy as np
 import mne
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, cohen_kappa_score
 from bokeh.io import curdoc
 from bokeh.plotting import figure
 from bokeh.models import Div, Select, Button, Slider
@@ -108,6 +108,12 @@ class TestWidget:
         y_true = self.chrono_source.data['y_true']
         return balanced_accuracy_score(y_true, y_pred)
 
+    @property
+    def kappa(self):
+        y_pred = self.chrono_source.data['y_pred']
+        y_true = self.chrono_source.data['y_true']
+        return cohen_kappa_score(y_true, y_pred)
+
     def on_pilot_change(self, attr, old, new):
         logging.info(f'Select pilot {new}')
         self.select_session.value = ''
@@ -206,9 +212,11 @@ class TestWidget:
                                            y_true=[y_true],
                                            y_pred=[y_pred]))
 
-        # TODO: Metrics recall/accuracy for each MI task + matrix
+        # Printing metrics
         self.div_info.text += f'<b>Accuracy:</b> {self.accuracy:.2f} <br>'
-        logging.info(f'Accuracy: {self.accuracy:.2f}')
+        self.div_info.text += f'<b>Kappa:</b> {self.kappa:.2f} <br>'
+        logging.info(f'Accuracy: {self.accuracy:.2f} - '
+                     f'Kappa: {self.kappa:.2f}')
 
         self.button_validate.label = 'Finished'
         self.button_validate.button_type = 'success'
