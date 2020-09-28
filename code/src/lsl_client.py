@@ -9,7 +9,7 @@ from config import main_config
 
 
 class LSLClient(QtCore.QRunnable):
-    def __init__(self, parent):
+    def __init__(self, parent, debug=False):
         super().__init__()
         self.parent = parent
         self.ts, self.eeg = [], []
@@ -17,6 +17,7 @@ class LSLClient(QtCore.QRunnable):
         self.chunk_len = int(main_config['fs'] * self.fetch_every_s)
         self.create_stream()
         self.should_stream = True
+        self.debug = debug
 
     def create_stream(self):
         logging.info('Looking for LSL stream...')
@@ -52,7 +53,9 @@ class LSLClient(QtCore.QRunnable):
                                                     max_samples=self.chunk_len)
             self.eeg = np.array(eeg, dtype=np.float64)
             self.ts = np.array(ts, dtype=np.float64)
-            logging.info(f'{len(ts)}')
+            if self.debug:
+                logging.info(f'LSL received: {len(ts)} new timestamps.')
+
         except Exception as e:
             logging.info(f'{e} - No more data')
             self.should_stream = False
