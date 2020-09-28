@@ -71,7 +71,6 @@ class PlayerWidget:
         self.record_path = main_config['record_path']
         self.record_name = game_config['record_name']
         self.lsl_recorder = None
-        # self.thread_record = QtCore.QThreadPool()
 
         # Predictor
         self.models_path = main_config['models_path']
@@ -87,6 +86,13 @@ class PlayerWidget:
     @lsl_data.setter
     def lsl_data(self, data):
         self._lsl_data = data
+
+        # Record signal
+        ts, eeg = data
+        self.last_ts = ts[-1]
+        if self.lsl_recorder is not None:
+            self.lsl_recorder.save_data(copy.deepcopy(ts), copy.deepcopy(eeg))
+
         self.parent.add_next_tick_callback(self.update_signal)
 
     @property
@@ -295,11 +301,6 @@ class PlayerWidget:
             self.reset_log_reader()
             self.parent.add_next_tick_callback(self.start_log_reader)
 
-        # Save groundtruth as event TODO: Wrong thread
-        if self.lsl_recorder is not None:
-            self.lsl_recorder.save_event(copy.deepcopy(self.last_ts),
-                                         copy.deepcopy(action_idx))
-
         # Send groundtruth to microcontroller
         if self.sending_events:
             if self.port_sender is not None:
@@ -319,6 +320,10 @@ class PlayerWidget:
 
         groundtruth = self.expected_action[0]
         action_idx = self.pred_action[0]
+
+        # Save groundtruth as event
+        if self.lsl_recorder is not None:
+            self.lsl_recorder.save_event(self.last_ts, groundtruth)
 
         # Update chronogram source
         ts = time.time() - self.game_start_time
@@ -374,16 +379,15 @@ class PlayerWidget:
         if active:
             try:
                 self.lsl_recorder = LSLRecorder(self.record_path,
-                                                self.record_name)
+                                                self.record_name,
+                                                self.lsl_reader.ch_names)
                 self.lsl_recorder.open_h5()
-                # self.thread_record.start(self.lsl_recorder)
+                self.button_record.label = 'Stop recording'
+                self.button_record.button_type = 'success'
             except Exception:
                 self.reset_recorder()
                 self.button_record.label = 'Recording failed'
                 self.button_record.button_type = 'danger'
-
-            self.button_record.label = 'Stop recording'
-            self.button_record.button_type = 'success'
         else:
             self.reset_recorder()
             self.button_record.label = 'Start recording'
@@ -391,7 +395,6 @@ class PlayerWidget:
 
     def update_signal(self):
         ts, eeg = self.lsl_data
-        self.last_ts = ts[-1]
 
         if ts.shape[0] != eeg.shape[-1]:
             logging.info('Skipping data points (bad format)')
@@ -411,10 +414,6 @@ class PlayerWidget:
         chunk_size = eeg.shape[-1]
         self.input_signal = np.roll(self.input_signal, -chunk_size, axis=-1)
         self.input_signal[:, -chunk_size:] = eeg
-
-        # Record signal
-        if self.lsl_recorder is not None:
-            self.lsl_recorder.save_data(copy.deepcopy(ts), copy.deepcopy(eeg))
 
     def create_widget(self):
         # Button - Launch Cybathlon game in new window
