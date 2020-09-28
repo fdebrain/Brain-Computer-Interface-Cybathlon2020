@@ -8,15 +8,15 @@ from config import main_config
 
 
 class LSLRecorder:
-    def __init__(self, recording_folder, filename, debug=False):
+    def __init__(self, recording_folder, filename, ch_names, debug=False):
         self.fs = main_config['fs']
         self.n_channels = main_config['n_channels']
+        self.ch_names = ch_names
 
         self.h5_path = recording_folder / filename
-        if os.path.isfile(self.h5_path):
+        while os.path.isfile(self.h5_path):
             self.h5_path = recording_folder / \
                 f'{filename[:-3]}_{np.random.randint(0, 9999)}.h5'
-            logging.info(self.h5_path)
         self.debug = debug
 
     def open_h5(self):
@@ -25,7 +25,7 @@ class LSLRecorder:
         self.ts_set = self.h5.create_dataset(name='ts',
                                              shape=(0,),
                                              maxshape=(None,),
-                                             dtype=np.float32,
+                                             dtype=np.int32,
                                              chunks=(self.fs,))
         self.eeg_set = self.h5.create_dataset(name='eeg',
                                               shape=(self.n_channels, 0,),
@@ -37,7 +37,13 @@ class LSLRecorder:
         self.event_set = self.h5.create_dataset(name='event',
                                                 shape=(0, 2),
                                                 maxshape=(None, 2),
-                                                dtype=np.float32)
+                                                dtype=np.int32)
+        self.fs_set = self.h5.create_dataset(name='fs',
+                                             data=self.fs,
+                                             dtype=np.int32)
+        self.ch_set = self.h5.create_dataset(name='ch_names',
+                                             data=np.array(self.ch_names,
+                                                           dtype='S'))
 
     def close_h5(self):
         logging.info('Stop recording')
@@ -48,7 +54,7 @@ class LSLRecorder:
         self.event_set[-1:, :] = [ts, event]
 
         if self.debug:
-            logging.info(f'ts:{ts} - action: {event}')
+            logging.info(f'ts: {ts:.2f} - action: {event}')
 
     def save_data(self, ts, eeg):
         if ts is not None or eeg is not None:
