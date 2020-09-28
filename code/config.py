@@ -48,11 +48,12 @@ game_config = {
 }
 
 predictor_config = {
-    # Corresponds to FP1 and FP2 (please double check)
+    # Corresponds to Fp1 and Fp2 (please double check)
     'ch_to_delete': [0, 30],
     'should_reref': True,
     'should_filter': False,
     'should_standardize': True,
+    'select_last_s': 1,
     'n_crops': 10,
     'crop_len': 0.5,
     'predict_every_s': 1,

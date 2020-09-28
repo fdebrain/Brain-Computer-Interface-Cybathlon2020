@@ -37,6 +37,7 @@ class ActionPredictor(QtCore.QRunnable):
         self.fake_delay_max = game_config['fake_delay_max']
         self.should_predict = True
         self.action_idx = 0
+        self.select_last_s = predictor_config['select_last_s']
 
         # Model
         self.is_convnet = is_convnet
@@ -83,7 +84,7 @@ class ActionPredictor(QtCore.QRunnable):
         # X = self.preproc_signal(X)
 
         # Selecting last 1s of signal
-        X = X[np.newaxis, :, -self.fs:]
+        X = X[np.newaxis, :, -int(self.fs*self.select_last_s):]
 
         if self.model is None:
             self.action_idx = 0
