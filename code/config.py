@@ -34,10 +34,6 @@ warmup_config = {
                      'Rest': 'retweet-solid.png',
                      'Headlight': 'bolt-solid.png'},
     'record_name': 'warmup_recording.h5',
-    'apply_notch': False,
-    'apply_filt': True,
-    'f_min': 2,
-    'f_max': 40,
 }
 
 game_config = {
@@ -45,12 +41,13 @@ game_config = {
     'game_path': Path('../game/brainDriver'),
     'game_logs_path': Path('../game/log'),
     'game_logs_pattern': 'raceLog*.txt',
-    'fake_delay_min': 0.5,
-    'fake_delay_max': 1,
+    'fake_delay_min': 0,
+    'fake_delay_max': 0,
     'record_name': 'game_recording.h5',
 }
 
 predictor_config = {
+    # Corresponds to FP1 and FP2 (please double check)
     'ch_to_delete': [0, 30],
     'should_reref': True,
     'should_filter': False,
@@ -58,4 +55,8 @@ predictor_config = {
     'n_crops': 10,
     'crop_len': 0.5,
     'predict_every_s': 1,
+    'apply_notch': True,
+    'apply_filt': False,
+    'f_min': 2,
+    'f_max': 40,
 }

@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 from pyqtgraph.Qt import QtCore
+import mne
 
 from config import main_config, predictor_config, game_config
 from src.pipeline import load_pipeline
@@ -25,6 +26,10 @@ class ActionPredictor(QtCore.QRunnable):
         self.should_standardize = predictor_config['should_standardize']
         self.n_crops = predictor_config['n_crops']
         self.crop_len = predictor_config['crop_len']
+        self.apply_notch = predictor_config['apply_notch']
+        self.apply_filt = predictor_config['apply_filt']
+        self.f_min = predictor_config['f_min']
+        self.f_max = predictor_config['f_max']
 
         # Prediction
         self.predict_every_s = predictor_config['predict_every_s']
@@ -54,9 +59,28 @@ class ActionPredictor(QtCore.QRunnable):
         logs = list(self.game_logs_path.glob(game_config['game_logs_pattern']))
         return sorted(logs)
 
+    def preproc_signal(self, eeg):
+        info = mne.create_info(self.ch_names,
+                               self.fs,
+                               ch_types='eeg')
+
+        logging.disable(logging.INFO)
+        data = mne.io.RawArray(eeg, info, verbose=0)
+
+        if self.apply_notch:
+            data.notch_filter(freqs=[50])
+        if self.apply_filt:
+            data.filter(l_freq=self.f_min, h_freq=self.f_max)
+        logging.disable(logging.NOTSET)
+
+        return data.get_data()
+
     def predict(self, X):
         # Removing FP1 & FP2
         X = np.delete(X, self.ch_to_delete, axis=0)
+
+        # Preprocess signal
+        # X = self.preproc_signal(X)
 
         # Selecting last 1s of signal
         X = X[np.newaxis, :, -self.fs:]
@@ -87,7 +111,9 @@ class ActionPredictor(QtCore.QRunnable):
         if self.model == 'AUTOPLAY' and self.action_idx in self.pred_decoding.keys():
             random_delay = (self.fake_delay_max - self.fake_delay_min) * \
                 np.random.random_sample() + self.fake_delay_min
-            time.sleep(random_delay)
+            if random_delay > 0:
+                logging.info(f'Sleep for {random_delay}s')
+                time.sleep(random_delay)
 
         self.parent.pred_action = (copy.deepcopy(self.action_idx),
                                    copy.deepcopy(self.pred_decoding[self.action_idx]))
