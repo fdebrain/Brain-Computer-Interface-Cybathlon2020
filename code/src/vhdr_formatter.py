@@ -1,4 +1,5 @@
 from collections import Counter
+import h5py
 import logging
 import os
 
@@ -6,12 +7,35 @@ import numpy as np
 import mne
 
 
-def load_vhdr(vhdr_path, resample=False, preprocess=False, remove_ch=None):
+def load_vhdr(vhdr_path, resample=False, preprocess=False, remove_ch=[]):
     logging.info(f'Loading {vhdr_path}')
 
     raw = mne.io.read_raw_brainvision(vhdr_path, preload=True,
                                       verbose=False)
+    raw = prepare_data(raw, resample, preprocess, remove_ch)
+    return raw
 
+
+def load_h5(h5_path, resample=False, preprocess=False, remove_ch=[]):
+    logging.info(f'Loading {h5_path}')
+
+    with h5py.File(name=h5_path, mode='r') as h5:
+        eeg = h5['eeg'][()]
+        ts = h5['ts'][()]
+        events = h5['event'][()]
+        ch_names = h5['ch_names'][()].astype(np.str)
+        fs = h5['fs'][()]
+
+    info = mne.create_info(list(ch_names), fs, ch_types='eeg')
+    raw = mne.io.RawArray(eeg, info, first_samp=ts[0], verbose=0)
+    raw.set_annotations(mne.Annotations(onset=events[:, 0] / 500 - raw.first_time,
+                                        duration=np.zeros((len(events))),
+                                        description=events[:, -1]))
+    raw = prepare_data(raw, resample, preprocess, remove_ch)
+    return raw
+
+
+def prepare_data(raw, resample=False, preprocess=False, remove_ch=[]):
     if len(remove_ch) > 0:
         logging.info(f'Removing the following channels: {remove_ch}')
         raw.drop_channels(remove_ch)
@@ -82,7 +106,12 @@ def format_session(list_paths, save_path, extraction_settings, preprocess_settin
     assert len(list_paths) > 0, 'No subsession to format'
     logging.info(f'Decoding: {extraction_settings["marker_decodings"]}')
     for subsession_path in list_paths:
-        raw = load_vhdr(subsession_path, **preprocess_settings)
+
+        if subsession_path.suffix == '.vhdr':
+            raw = load_vhdr(subsession_path, **preprocess_settings)
+        elif subsession_path.suffix == '.h5':
+            raw = load_h5(subsession_path, **preprocess_settings)
+
         eeg, labels = extract_events(raw, **extraction_settings,
                                      is_game=is_game)
 

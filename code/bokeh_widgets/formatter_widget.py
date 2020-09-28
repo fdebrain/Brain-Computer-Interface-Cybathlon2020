@@ -11,7 +11,7 @@ from bokeh.models import (Div, Select, Button, Slider, CheckboxButtonGroup,
 from bokeh.layouts import column, row
 
 from config import main_config
-from src.vhdr_formatter import format_session
+from src.vhdr_formatter import format_session, load_h5, load_vhdr
 
 
 class FormatterWidget:
@@ -100,20 +100,21 @@ class FormatterWidget:
         return self.data_path / self.selected_pilot / self.selected_session
 
     @property
-    def available_runs(self):
-        folder = 'game' if self.is_game_session else 'vhdr'
-        runs = self.session_path.glob(f'{folder}/*.vhdr')
-        return [''] + [r.name for r in runs]
+    def run_type(self):
+        return 'game' if self.is_game_session else 'vhdr'
 
     @property
     def session_runs(self):
-        folder = 'game' if self.is_game_session else 'vhdr'
-        return list(self.session_path.glob(f'{folder}/*.vhdr'))
+        regex = '*.h5' if 'HDF5' in self.selected_settings else '*.vhdr'
+        return list(self.session_path.glob(f'{self.run_type}/{regex}'))
+
+    @property
+    def available_runs(self):
+        return [''] + [r.name for r in self.session_runs]
 
     @property
     def run_path(self):
-        folder = 'game' if self.is_game_session else 'vhdr'
-        return self.session_path / folder / self.select_run.value
+        return self.session_path / self.run_type / self.select_run.value
 
     @property
     def channel_name(self):
@@ -181,10 +182,14 @@ class FormatterWidget:
         self.update_widget()
 
         # Get session info
-        fs = None
+        fs = 0
+        duration = 0
         events_counter = dict()
         n_channels, n_samples = 0, 0
         for run in self.session_runs:
+            if run.suffix == '.h5':
+                continue
+
             raw = mne.io.read_raw_brainvision(vhdr_fname=run,
                                               preload=False,
                                               verbose=False)
@@ -192,7 +197,7 @@ class FormatterWidget:
             fs = int(raw.info['sfreq'])
             n_channels = len(raw.ch_names)
             n_samples += raw.n_times
-
+            duration += int(raw.n_times/(fs*60))
             events = mne.events_from_annotations(raw, verbose=False)[0]
 
             # Extract only decimal digit if game session
@@ -209,7 +214,7 @@ class FormatterWidget:
         self.div_info.text = f'<b>Sampling frequency</b>: {fs} Hz <br>'
         self.div_info.text += f'<b>Nb of channels</b>: {n_channels} <br>'
         self.div_info.text += f'<b>Nb of samples</b>: {n_samples} '
-        self.div_info.text += f'({int(n_samples/(fs*60))} mn) <br>'
+        self.div_info.text += f'({duration} mn) <br>'
         self.div_info.text += f'<b>Nb of occurence per events:</b><br>'
         for event, count in events_counter.items():
             if count > 5:
@@ -221,9 +226,10 @@ class FormatterWidget:
         self.update_widget()
 
         # Load eeg file
-        raw = mne.io.read_raw_brainvision(vhdr_fname=self.run_path,
-                                          preload=True,
-                                          verbose=False)
+        if self.run_path.suffix == '.vhdr':
+            raw = load_vhdr(self.run_path)
+        else:
+            raw = load_h5(self.run_path)
 
         # Get channels
         available_channels = raw.ch_names
@@ -244,7 +250,7 @@ class FormatterWidget:
 
     def on_settings_change(self, attr, old, new):
         logging.info(f'Changed settings: {new}')
-        if 2 in new:
+        if 2 in new or 3 in new:
             self.update_widget()
             self.on_session_change('attr',
                                    self.selected_session,
@@ -363,7 +369,7 @@ class FormatterWidget:
 
         # Checkbox - Preprocessing
         self.checkbox_settings = CheckboxButtonGroup(
-            labels=['Balance', 'Preprocess', 'Game session'])
+            labels=['Balance', 'Preprocess', 'Game session', 'HDF5'])
         self.checkbox_settings.on_change('active', self.on_settings_change)
 
         self.button_format = Button(label="Format", button_type="primary")
