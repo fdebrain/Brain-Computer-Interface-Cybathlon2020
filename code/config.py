@@ -4,6 +4,7 @@ main_config = {
     'fs': 500,
     'n_channels': 63,
     'lsl_every_s': 0.1,
+    'timeout': 0.5,
     'pred_decoding': {0: 'Rest', 1: 'Left', 2: 'Right', 3: 'Headlight'},
     'data_path': Path('../Datasets/Pilots'),
     'record_path': Path('./saved_recordings'),
