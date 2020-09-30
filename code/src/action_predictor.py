@@ -21,9 +21,14 @@ class ActionPredictor(QtCore.QRunnable):
 
         # Preprocessing
         self.ch_to_delete = predictor_config['ch_to_delete']
-        self.should_reref = predictor_config['should_reref']
-        self.should_filter = predictor_config['should_filter']
-        self.should_standardize = predictor_config['should_standardize']
+        if is_convnet:
+            self.should_reref = predictor_config['should_reref']
+            self.should_filter = predictor_config['should_filter']
+            self.should_standardize = predictor_config['should_standardize']
+        else:
+            self.should_reref = False
+            self.should_filter = False
+            self.should_standardize = False
         self.n_crops = predictor_config['n_crops']
         self.crop_len = predictor_config['crop_len']
         self.apply_notch = predictor_config['apply_notch']
