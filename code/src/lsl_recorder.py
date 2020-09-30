@@ -25,19 +25,19 @@ class LSLRecorder:
         self.ts_set = self.h5.create_dataset(name='ts',
                                              shape=(0,),
                                              maxshape=(None,),
-                                             dtype=np.int32,
+                                             dtype=np.int64,
                                              chunks=(self.fs,))
         self.eeg_set = self.h5.create_dataset(name='eeg',
                                               shape=(self.n_channels, 0,),
                                               maxshape=(self.n_channels,
                                                         None,),
-                                              dtype=np.float32,
+                                              dtype=np.float64,
                                               chunks=(self.n_channels,
                                                       self.fs,))
         self.event_set = self.h5.create_dataset(name='event',
                                                 shape=(0, 2),
                                                 maxshape=(None, 2),
-                                                dtype=np.int32)
+                                                dtype=np.int64)
         self.fs_set = self.h5.create_dataset(name='fs',
                                              data=self.fs,
                                              dtype=np.int32)
