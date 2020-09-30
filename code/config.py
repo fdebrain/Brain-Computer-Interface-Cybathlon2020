@@ -48,17 +48,20 @@ game_config = {
 }
 
 predictor_config = {
-    # Corresponds to Fp1 and Fp2 (please double check)
+    # Remove Fp1 and Fp2 index channels (please double check)
     'ch_to_delete': [0, 30],
-    'should_reref': True,
-    'should_filter': False,
-    'should_standardize': True,
-    'select_last_s': 1,
-    'n_crops': 10,
-    'crop_len': 0.5,
-    'predict_every_s': 1,
-    'apply_notch': True,
+    # Preprocessing
+    'apply_notch': False,
     'apply_filt': False,
     'f_min': 2,
     'f_max': 40,
+    # The following preprocessing is applied only for ConvNet
+    'should_reref': True,
+    'should_filter': False,
+    'should_standardize': True,
+    # ROI and Cropping
+    'predict_every_s': 1,
+    'select_last_s': 1,
+    'n_crops': 10,
+    'crop_len': 0.5,
 }
