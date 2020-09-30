@@ -46,14 +46,10 @@ class ActionPredictor(QtCore.QRunnable):
         else:
             self.model = load_pipeline(modelfile)
 
-        # Game logs (separate thread - if autoplay)
-        self.game_logs_path = game_config['game_logs_path']
-        self.game_log_reader = None
-        # self.thread_log = QtCore.QThreadPool()
-
         # Game player
         self.player_idx = game_config['player_idx']
         self.game_player = GamePlayer(self.player_idx)
+        self.game_logs_path = game_config['game_logs_path']
 
     @property
     def available_logs(self):
@@ -91,6 +87,11 @@ class ActionPredictor(QtCore.QRunnable):
             logging.warning('Rest action sent by default! '
                             'Please select a model.')
         elif self.model == 'AUTOPLAY':
+            random_delay = (self.fake_delay_max - self.fake_delay_min) * \
+                np.random.random_sample() + self.fake_delay_min
+            if random_delay > 0:
+                logging.info(f'Sleep for {random_delay}s')
+                time.sleep(random_delay)
             self.action_idx = self.parent.expected_action[0]
         else:
             self.action_idx = predict(X, self.model, self.is_convnet,
@@ -108,14 +109,6 @@ class ActionPredictor(QtCore.QRunnable):
             self.game_player.sendCommand(self.action_idx)
 
     def notify(self):
-        # AUTOPLAY - Fake delay for more realistic control feel
-        if self.model == 'AUTOPLAY' and self.action_idx in self.pred_decoding.keys():
-            random_delay = (self.fake_delay_max - self.fake_delay_min) * \
-                np.random.random_sample() + self.fake_delay_min
-            if random_delay > 0:
-                logging.info(f'Sleep for {random_delay}s')
-                time.sleep(random_delay)
-
         self.parent.pred_action = (copy.deepcopy(self.action_idx),
                                    copy.deepcopy(self.pred_decoding[self.action_idx]))
 
@@ -126,8 +119,8 @@ class ActionPredictor(QtCore.QRunnable):
             countdown = time.time()
             X = copy.deepcopy(self.parent.input_signal)
             self.predict(X)
+            self.notify()
             delay_correction = time.time() - countdown
             time.sleep(self.predict_every_s - delay_correction)
-            self.notify()
 
         logging.info('Stop action predictor')
