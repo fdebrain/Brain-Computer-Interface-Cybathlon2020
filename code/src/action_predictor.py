@@ -77,7 +77,7 @@ class ActionPredictor(QtCore.QRunnable):
         X = np.delete(X, self.ch_to_delete, axis=0)
 
         # Preprocess signal
-        # X = self.preproc_signal(X)
+        X = self.preproc_signal(X)
 
         # Selecting last 1s of signal
         X = X[np.newaxis, :, -int(self.fs*self.select_last_s):]
