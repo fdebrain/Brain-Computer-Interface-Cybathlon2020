@@ -56,34 +56,30 @@ def extract_data(raw, events, pre, post, marker_decodings, ignore_multi=False):
     fs = raw.info['sfreq']
     to_delete = []
 
-    # Extract events in format (ts, ?, marker_id)
-    events, _ = mne.events_from_annotations(raw, verbose=False)
+    # Keep markers corresponding to change in expected action + ignore model predictions
+    for idx in range(len(events) - 1):
+        marker_id = str(events[idx, -1])
 
-    # Game session - Keep markers corresponding to change in expected action + ignore model predictions
-    if is_game:
-        for idx in range(len(events) - 1):
-            marker_id = str(events[idx][-1])
+        # Ignore marker_id with less/more than 2 digits
+        if len(marker_id) != 2 and ignore_multi is True:
+            logging.info(f'Ignore event {events[idx, -1]}')
+            to_delete.append(idx)
+            continue
 
-            # Ignore marker_id with less/more than 2 digits
-            if len(marker_id) != 2:
-                logging.info(f'Ignore event {events[idx][-1]}')
-                to_delete.append(idx)
-                continue
+        # Remove event if no change in groundtruth
+        next_marker_id = str(events[idx + 1, -1])
+        if marker_id[0] == next_marker_id[0]:
+            to_delete.append(idx + 1)
 
-            # Remove event if no change in groundtruth
-            next_marker_id = str(events[idx + 1][-1])
-            if marker_id[0] == next_marker_id[0]:
-                to_delete.append(idx + 1)
+        # Replace marker_id by groundtruth (remove prediction)
+        events[idx][-1] = int(marker_id[0])
 
-            # Replace marker_id by groundtruth (remove prediction)
-            events[idx][-1] = int(marker_id[0])
-
-        events = np.delete(events, to_delete, axis=0)
-        to_delete = []
+    events = np.delete(events, to_delete, axis=0)
+    to_delete = []
 
     # Getting rid of rest markers close to a consecutive one (less than 3.5s)
     for idx in range(len(events)-1):
-        delay = (events[idx+1][0] - events[idx][0]) / fs
+        delay = (events[idx+1, 0] - events[idx, 0]) / fs
         if delay < 3.5 and events[idx][-1] == marker_decodings['Rest']:
             to_delete.append(idx)
 
