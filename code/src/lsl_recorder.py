@@ -2,7 +2,6 @@ import os
 import logging
 import h5py
 import numpy as np
-# from pyqtgraph.Qt import QtCore
 
 from config import main_config
 
@@ -54,7 +53,9 @@ class LSLRecorder:
         self.event_set[-1:, :] = [ts, event]
 
         if self.debug:
-            logging.info(f'ts: {ts:.2f} - action: {event}')
+            logging.info(f'Recording event - '
+                         f'ts: {self.event_set[-1, 0]} - '
+                         f'action: {self.event_set[-1, 1]}')
 
     def save_data(self, ts, eeg):
         if ts is not None or eeg is not None:
@@ -66,5 +67,6 @@ class LSLRecorder:
             self.ts_set[-n_frames:] = ts
 
             if self.debug:
-                logging.info(
-                    f'ts: {self.ts_set.shape} - eeg: {self.eeg_set.shape} - n_frames: {n_frames}')
+                logging.info(f'Recording eeg - '
+                             f'Last ts: {self.ts_set[-1]} - '
+                             f'n_frames: {n_frames}')
