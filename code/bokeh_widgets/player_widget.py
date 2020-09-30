@@ -87,9 +87,11 @@ class PlayerWidget:
     def lsl_data(self, data):
         self._lsl_data = data
 
-        # Record signal
+        # Memorize the most recent timestamp
         ts, eeg = data
         self.last_ts = ts[-1]
+
+        # Record signal
         if self.lsl_recorder is not None:
             self.lsl_recorder.save_data(copy.deepcopy(ts), copy.deepcopy(eeg))
 
@@ -113,6 +115,11 @@ class PlayerWidget:
     def expected_action(self, action):
         logging.info(f'Receiving groundtruth from logs: {action}')
         self._expected_action = copy.deepcopy(action)
+
+        # In autoplay, we directly update the model prediction (no delay)
+        if self.modelfile == 'AUTOPLAY':
+            self._pred_action = copy.deepcopy(action)
+
         self.parent.add_next_tick_callback(self.update_groundtruth)
 
     @property
@@ -283,7 +290,7 @@ class PlayerWidget:
         self.button_launch_game.button_type = 'success'
 
     def update_groundtruth(self):
-        action_idx, action_name = self._expected_action
+        action_idx, action_name = self.expected_action
 
         # Start autoplay predictor when game starts + reset chronogram (if multiple consecutive runs)
         if action_name == 'Game start':
@@ -323,7 +330,8 @@ class PlayerWidget:
 
         # Save groundtruth as event
         if self.lsl_recorder is not None:
-            self.lsl_recorder.save_event(self.last_ts, groundtruth)
+            marker_id = int(f'{(groundtruth+1)*2}{(action_idx+1)*2}')
+            self.lsl_recorder.save_event(self.last_ts, marker_id)
 
         # Update chronogram source
         ts = time.time() - self.game_start_time
