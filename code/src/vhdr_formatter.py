@@ -28,11 +28,11 @@ def load_h5(h5_path, resample=False, preprocess=False, remove_ch=[]):
 
     info = mne.create_info(list(ch_names), fs, ch_types='eeg')
     raw = mne.io.RawArray(eeg, info, first_samp=ts[0], verbose=0)
-    raw.set_annotations(mne.Annotations(onset=events[:, 0] / 500 - raw.first_time,
-                                        duration=np.zeros((len(events))),
-                                        description=events[:, -1]))
     raw = prepare_data(raw, resample, preprocess, remove_ch)
-    return raw
+    events = np.c_[events[:, 0],
+                   np.zeros((len(events))),
+                   events[:, -1]].astype(np.int64)
+    return raw, events
 
 
 def prepare_data(raw, resample=False, preprocess=False, remove_ch=[]):
@@ -52,7 +52,7 @@ def prepare_data(raw, resample=False, preprocess=False, remove_ch=[]):
     return raw
 
 
-def extract_events(raw, pre, post, marker_decodings, is_game=False):
+def extract_data(raw, events, pre, post, marker_decodings, ignore_multi=False):
     fs = raw.info['sfreq']
     to_delete = []
 
@@ -109,11 +109,16 @@ def format_session(list_paths, save_path, extraction_settings, preprocess_settin
 
         if subsession_path.suffix == '.vhdr':
             raw = load_vhdr(subsession_path, **preprocess_settings)
-        elif subsession_path.suffix == '.h5':
-            raw = load_h5(subsession_path, **preprocess_settings)
 
-        eeg, labels = extract_events(raw, **extraction_settings,
-                                     is_game=is_game)
+            # Extract events in format (ts, ?, marker_id)
+            events, _ = mne.events_from_annotations(raw, verbose=False)
+
+            eeg, labels = extract_data(raw, events, **extraction_settings,
+                                       ignore_multi=is_game)
+        elif subsession_path.suffix == '.h5':
+            raw, events = load_h5(subsession_path, **preprocess_settings)
+            eeg, labels = extract_data(raw, events, **extraction_settings,
+                                       ignore_multi=is_game)
 
         # Stack trials
         if len(session_eeg) == 0:
