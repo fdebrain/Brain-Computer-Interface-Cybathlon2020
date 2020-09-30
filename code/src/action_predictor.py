@@ -121,6 +121,7 @@ class ActionPredictor(QtCore.QRunnable):
             self.predict(X)
             self.notify()
             delay_correction = time.time() - countdown
-            time.sleep(self.predict_every_s - delay_correction)
+            if delay_correction > 0:
+                time.sleep(self.predict_every_s - delay_correction)
 
         logging.info('Stop action predictor')
