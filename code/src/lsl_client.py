@@ -53,8 +53,10 @@ class LSLClient(QtCore.QRunnable):
                                                     max_samples=self.chunk_len)
             self.eeg = np.array(eeg, dtype=np.float64)
             self.ts = np.array(ts, dtype=np.float64)
-            if self.debug:
-                logging.info(f'LSL received: {len(ts)} new timestamps.')
+
+            if len(self.ts) < self.chunk_len:
+                logging.info(f'Receiving LSL: {len(self.ts)} '
+                             f'instead of {self.chunk_len} !')
 
         except Exception as e:
             logging.info(f'{e} - No more data')
@@ -62,12 +64,20 @@ class LSLClient(QtCore.QRunnable):
 
     def notify(self):
         if len(self.eeg) > 0:
-            # Manipulate data to be of shape (n_channels, n_timestamps)
+            # Manipulate eeg data to be of shape (n_channels, n_timestamps)
             self.eeg = np.swapaxes(self.eeg, 1, 0)
 
             # Convert timestamps from seconds to framesize
-            self.parent.lsl_data = (copy.deepcopy(self.ts * self.fs),
+            self.ts = np.array(self.ts) * self.fs
+            self.ts = self.ts.astype(np.int64)
+
+            self.parent.lsl_data = (copy.deepcopy(self.ts),
                                     copy.deepcopy(self.eeg))
+
+            if self.debug:
+                logging.info(f'Receiving LSL - '
+                             f'Last ts: {self.ts[-1]} - '
+                             f'n_frames: {len(self.ts)}')
 
     @QtCore.pyqtSlot()
     def run(self):
