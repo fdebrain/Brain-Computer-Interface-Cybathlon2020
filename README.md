@@ -80,3 +80,16 @@ master-thesis-cybathlon
 - `bokeh serve bokeh_dashboard --show`
 
 ![Player interface](Reports/images/player_tab.png)
+
+## How to cite
+```
+@misc{debraine2020,
+  author = {Frederic, Debraine},
+  title = {Leveraging Deep Learning for Real-time EEG Classification at Cybathlon's BCI-race},
+  year = {2020},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/fdebrain/master-thesis-cybathlon}},
+  commit = {97ef32ea154ca2403c9fb7f8a7110908565e42a5}
+}
+```
