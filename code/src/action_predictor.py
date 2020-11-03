@@ -78,15 +78,6 @@ class ActionPredictor(QtCore.QRunnable):
         return data.get_data()
 
     def predict(self, X):
-        # Removing FP1 & FP2
-        X = np.delete(X, self.ch_to_delete, axis=0)
-
-        # Preprocess signal
-        X = self.preproc_signal(X)
-
-        # Selecting last 1s of signal
-        X = X[np.newaxis, :, -int(self.fs*self.select_last_s):]
-
         if self.model is None:
             self.action_idx = 0
             logging.warning('Rest action sent by default! '
@@ -99,6 +90,15 @@ class ActionPredictor(QtCore.QRunnable):
                 time.sleep(random_delay)
             self.action_idx = self.parent.expected_action[0]
         else:
+            # Removing FP1 & FP2
+            X = np.delete(X, self.ch_to_delete, axis=0)
+
+            # Preprocess signal
+            X = self.preproc_signal(X)
+
+            # Selecting last 1s of signal
+            X = X[np.newaxis, :, -int(self.fs*self.select_last_s):]
+
             self.action_idx = predict(X, self.model, self.is_convnet,
                                       self.n_crops, self.crop_len, self.fs,
                                       self.should_reref, self.should_filter,
