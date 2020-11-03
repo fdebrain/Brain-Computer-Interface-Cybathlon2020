@@ -62,7 +62,10 @@ class ActionPredictor(QtCore.QRunnable):
         return sorted(logs)
 
     def preproc_signal(self, eeg):
-        info = mne.create_info(self.ch_names,
+        ch_names = np.delete(self.parent.lsl_reader.ch_names,
+                             self.ch_to_delete, axis=0)
+
+        info = mne.create_info(list(ch_names),
                                self.fs,
                                ch_types='eeg')
 
