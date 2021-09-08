@@ -81,6 +81,12 @@ master-thesis-cybathlon
 
 ![Player interface](Reports/images/player_tab.png)
 
+## 4. Demo
+
+Data stream            |  Game preview
+:-------------------------:|:-------------------------:
+<img src="https://drive.google.com/uc?export=view&id=1Xk5NOy6oq_GBWOVLUE5T_wEuLBcwDQbG" width="400" height="300">  |  <img src="https://drive.google.com/uc?export=view&id=1hEcGJFmu-1eRbga_AKzSqJRhvdQYGfG8" width="400" height="300">
+
 ## How to cite
 ```
 @misc{debraine2020,
