@@ -77,7 +77,7 @@ master-thesis-cybathlon
 
 ## 3. Launching the visual interface
 - `conda activate cybathlon`
-- `bokeh serve bokeh_dashboard --show`
+- `bokeh serve main --show`
 
 ![Player interface](Reports/images/player_tab.png)
 
