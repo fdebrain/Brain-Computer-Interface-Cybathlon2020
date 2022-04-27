@@ -85,7 +85,7 @@ master-thesis-cybathlon
 
 Data stream            |  Game preview
 :-------------------------:|:-------------------------:
-<img src="https://drive.google.com/uc?export=view&id=1Xk5NOy6oq_GBWOVLUE5T_wEuLBcwDQbG" width="400" height="300">  |  <img src="https://drive.google.com/uc?export=view&id=1hEcGJFmu-1eRbga_AKzSqJRhvdQYGfG8" width="400" height="300">
+<img src="https://user-images.githubusercontent.com/12777340/165641100-2489f456-a969-43ae-9e94-23d8f723c261.gif" width="400" height="300">  |  <img src="https://user-images.githubusercontent.com/12777340/165641665-8d373212-9a24-44a7-a74c-f901680aae4e.gif" width="400" height="300">
 
 ## How to cite
 ```
